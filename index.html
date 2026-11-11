@@ -3,41 +3,47 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BPM Rust - Modelado de Procesos</title>
+    <title>DAPIO-FLOW</title>
   </head>
   <body>
     <div id="app">
-      <header class="toolbar">
-        <div class="left">
-          <strong>BPM Rust</strong>
-          <span class="subtitle">BPMN · DOP · DAP</span>
+      <header class="topbar">
+        <div class="brand">
+          <span class="logo">DF</span>
+          <div>
+            <strong>DAPIO-FLOW</strong>
+            <span class="subtitle">Modelado de procesos BPMN · DOP · DAP</span>
+          </div>
         </div>
-        <div class="tools" id="tools">
+        <div class="top-actions">
+          <button id="btn-new" title="Nuevo diagrama">Nuevo</button>
           <button id="btn-open">Abrir</button>
-          <button id="btn-save">Guardar JSON</button>
+          <button id="btn-save">Guardar</button>
           <button id="btn-import-bpmn">Importar BPMN</button>
-          <button id="btn-export-csv">Exportar CSV</button>
-          <button id="btn-export-xls">Exportar Excel (DAP)</button>
-          <button id="btn-export-bpmn">Exportar BPMN 2.0</button>
           <span class="sep"></span>
-          <button data-add="OPERATION">Operación</button>
-          <button data-add="TRANSPORT">Transporte</button>
-          <button data-add="INSPECTION">Inspección</button>
-          <button data-add="DELAY">Demora</button>
-          <button data-add="STORAGE">Almacen.</button>
-          <button data-add="COMBINED">Combinada</button>
+          <button id="btn-export-csv">CSV</button>
+          <button id="btn-export-xls">Excel DAP</button>
+          <button id="btn-export-bpmn">BPMN 2.0</button>
           <span class="sep"></span>
-          <button id="btn-connect" title="Conectar nodos (clic en puerto origen y luego destino)">Conectar</button>
+          <button id="btn-connect" title="Modo conectar (o arrastra desde un puerto)">Conectar</button>
           <button id="btn-delete">Eliminar</button>
-          <button id="btn-reset-view">Centrar</button>
+          <button id="btn-reset-view">Centrar vista</button>
           <input id="file-open" type="file" accept=".json,.bpmr.json" style="display:none" />
           <input id="file-import-bpmn" type="file" accept=".bpmn,.xml" style="display:none" />
         </div>
       </header>
-      <main class="workspace-area">
-        <div class="workspace">
+
+      <div class="workspace-area">
+        <aside class="palette" id="palette">
+          <h3>Elementos</h3>
+          <div class="muted small">Arrastra un elemento al lienzo</div>
+          <div id="palette-items" class="palette-items"></div>
+        </aside>
+
+        <main class="workspace">
           <canvas id="diagram-canvas"></canvas>
-        </div>
+        </main>
+
         <aside class="panel" id="panel">
           <h3>Proyecto</h3>
           <div id="project-form">
@@ -71,9 +77,23 @@
           <h3>Validación</h3>
           <div id="validation-box" class="validation-box"></div>
         </aside>
-      </main>
+      </div>
+
       <footer class="statusbar" id="statusbar">Listo</footer>
     </div>
+
+    <div id="start-modal" class="modal">
+      <div class="modal-card">
+        <h2>DAPIO-FLOW</h2>
+        <p>Selecciona el tipo de diagrama para comenzar</p>
+        <div class="type-grid">
+          <button class="type-card" data-type="DAP"><strong>DAP</strong><span>Diagrama Analítico del Proceso (OIT completo)</span></button>
+          <button class="type-card" data-type="DOP"><strong>DOP</strong><span>Diagrama de Operaciones del Proceso (Operación/Inspección)</span></button>
+          <button class="type-card" data-type="BPMN"><strong>BPMN</strong><span>Modelado de flujo BPMN 2.0</span></button>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

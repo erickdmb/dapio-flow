@@ -3,6 +3,7 @@ import { Camera } from "./canvas/camera";
 import { hitTestEdge, hitTestNode, hitTestPort, renderDiagram } from "./canvas/renderer";
 import { createEmptyDocument, createOitNode } from "./model/defaults";
 import { calculateDapSummary } from "./model/summary";
+import { validateDiagram } from "./model/validation";
 import type { DiagramEdge, OitKind, ProjectDocument } from "./model/types";
 import { openDocument, saveDocument } from "./persistence";
 
@@ -29,6 +30,16 @@ let last = { x: 0, y: 0 };
 
 const connectBtn = document.getElementById("btn-connect") as HTMLButtonElement | null;
 
+const propLabel = document.getElementById("prop-label") as HTMLInputElement | null;
+const propKind = document.getElementById("prop-kind") as HTMLInputElement | null;
+const propTime = document.getElementById("prop-time") as HTMLInputElement | null;
+const propDist = document.getElementById("prop-dist") as HTMLInputElement | null;
+const propResource = document.getElementById("prop-resource") as HTMLInputElement | null;
+const nodeForm = document.getElementById("node-form");
+const noSelection = document.getElementById("no-selection");
+const summaryBox = document.getElementById("summary-box");
+const validationBox = document.getElementById("validation-box");
+
 function resize() {
   const parent = canvas.parentElement!;
   const dpr = window.devicePixelRatio || 1;
@@ -36,6 +47,32 @@ function resize() {
   canvas.height = Math.floor(parent.clientHeight * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   draw();
+}
+
+function syncPanel() {
+  const node = selectedNodeId ? doc.diagram.nodes.find(n => n.id === selectedNodeId) : null;
+  if (node && nodeForm && noSelection) {
+    nodeForm.classList.remove("hidden");
+    noSelection.classList.add("hidden");
+    if (propLabel) propLabel.value = node.label || "";
+    if (propKind) propKind.value = node.kind.type === "OIT" ? node.kind.value : node.kind.value;
+    if (propTime) propTime.value = String(node.metrics.time_seconds ?? "");
+    if (propDist) propDist.value = String(node.metrics.distance_meters ?? "");
+    if (propResource) propResource.value = node.resource ?? "";
+  } else if (nodeForm && noSelection) {
+    nodeForm.classList.add("hidden");
+    noSelection.classList.remove("hidden");
+  }
+
+  const s = calculateDapSummary(doc.diagram);
+  if (summaryBox) {
+    summaryBox.innerHTML = `Op: <b>${s.operations}</b> · Tr: <b>${s.transports}</b> · Insp: <b>${s.inspections}</b><br/>Dem: <b>${s.delays}</b> · Alm: <b>${s.storages}</b><br/>Tiempo total: <b>${s.total_time_seconds}s</b><br/>Distancia total: <b>${s.total_distance_meters}m</b>`;
+  }
+  const v = validateDiagram(doc.diagram, doc.metadata.notation);
+  if (validationBox) {
+    if (v.ok) validationBox.innerHTML = `<div class="validation-ok">Sin incidencias (${doc.metadata.notation})</div>`;
+    else validationBox.innerHTML = v.issues.map(i => `<div class="validation-err">• [${i.code}] ${i.message}</div>`).join("");
+  }
 }
 
 function updateStatus(extra?: string) {
@@ -51,6 +88,7 @@ function updateStatus(extra?: string) {
 function draw(extra?: string) {
   const parent = canvas.parentElement!;
   renderDiagram(ctx, parent.clientWidth, parent.clientHeight, camera, doc.diagram, selectedNodeId, selectedEdgeId, pendingPort, hoverPort);
+  syncPanel();
   updateStatus(extra);
 }
 
@@ -95,6 +133,24 @@ document.querySelectorAll<HTMLButtonElement>("[data-add]").forEach((btn) => {
 connectBtn?.addEventListener("click", () => setConnectMode(!connectMode));
 document.getElementById("btn-delete")?.addEventListener("click", deleteSelection);
 document.getElementById("btn-reset-view")?.addEventListener("click", () => { camera.x = 40; camera.y = 40; camera.scale = 1; draw(); });
+
+function bindPropInputs() {
+  const onChange = () => {
+    if (!selectedNodeId) return;
+    const node = doc.diagram.nodes.find(n => n.id === selectedNodeId);
+    if (!node) return;
+    if (propLabel) node.label = propLabel.value;
+    if (propResource) node.resource = propResource.value || null;
+    if (propTime) node.metrics.time_seconds = propTime.value === "" ? null : Number(propTime.value);
+    if (propDist) node.metrics.distance_meters = propDist.value === "" ? null : Number(propDist.value);
+    draw();
+  };
+  [propLabel, propResource, propTime, propDist].forEach(el => {
+    el?.addEventListener("input", onChange);
+    el?.addEventListener("change", onChange);
+  });
+}
+bindPropInputs();
 
 document.getElementById("btn-save")?.addEventListener("click", async () => {
   const msg = await saveDocument(doc);

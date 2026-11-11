@@ -29,8 +29,25 @@
           <input id="file-open" type="file" accept=".json,.bpmr.json" style="display:none" />
         </div>
       </header>
-      <main class="workspace">
-        <canvas id="diagram-canvas"></canvas>
+      <main class="workspace-area">
+        <div class="workspace">
+          <canvas id="diagram-canvas"></canvas>
+        </div>
+        <aside class="panel" id="panel">
+          <h3>Propiedades</h3>
+          <div id="no-selection" class="muted">Selecciona un nodo para editar sus propiedades.</div>
+          <div id="node-form" class="hidden">
+            <label>Etiqueta <input id="prop-label" type="text" /></label>
+            <label>Tipo <input id="prop-kind" type="text" disabled /></label>
+            <label>Tiempo (s) <input id="prop-time" type="number" min="0" step="1" /></label>
+            <label>Distancia (m) <input id="prop-dist" type="number" min="0" step="0.1" /></label>
+            <label>Recurso <input id="prop-resource" type="text" /></label>
+          </div>
+          <h3>Resumen DAP</h3>
+          <div id="summary-box" class="summary-box"></div>
+          <h3>Validación</h3>
+          <div id="validation-box" class="validation-box"></div>
+        </aside>
       </main>
       <footer class="statusbar" id="statusbar">Listo</footer>
     </div>

@@ -19,10 +19,13 @@ export function bpmnNodeSize(kind: BpmnElementType): { w: number; h: number } {
     case "END_EVENT": return { w: 36, h: 36 };
     case "EXCLUSIVE_GATEWAY": return { w: 44, h: 44 };
     case "PARALLEL_GATEWAY": return { w: 44, h: 44 };
+    case "POOL": return { w: 600, h: 220 };
+    case "LANE": return { w: 560, h: 120 };
   }
 }
 export function nodeSize(kind: OitKind): { w: number; h: number } { return oitNodeSize(kind); }
 export function getNodeSize(node: DiagramNode): { w: number; h: number } {
+  if (node.size?.width && node.size?.height) return { w: node.size.width, h: node.size.height };
   return node.kind.type === "OIT" ? oitNodeSize(node.kind.value) : bpmnNodeSize(node.kind.value);
 }
 
@@ -61,8 +64,8 @@ function drawOit(ctx: CanvasRenderingContext2D, kind: OitKind, selected: boolean
   }
 }
 
-function drawBpmn(ctx: CanvasRenderingContext2D, kind: BpmnElementType, selected: boolean, fill = "#fff", stroke = "#1f2937") {
-  const { w, h } = bpmnNodeSize(kind);
+function drawBpmn(ctx: CanvasRenderingContext2D, kind: BpmnElementType, selected: boolean, fill = "#fff", stroke = "#1f2937", custom?: {w:number;h:number;label?:string}) {
+  const { w, h } = custom ? {w: custom.w, h: custom.h} : bpmnNodeSize(kind);
   ctx.fillStyle = fill;
   ctx.strokeStyle = selected ? "#2563eb" : stroke;
   ctx.lineWidth = selected ? 2.5 : 2;
@@ -86,12 +89,24 @@ function drawBpmn(ctx: CanvasRenderingContext2D, kind: BpmnElementType, selected
     case "PARALLEL_GATEWAY":
       ctx.beginPath(); ctx.moveTo(0,-h/2); ctx.lineTo(w/2,0); ctx.lineTo(0,h/2); ctx.lineTo(-w/2,0); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.lineWidth = 2; ctx.strokeStyle = selected ? "#2563eb" : stroke;
-      if (kind === "EXCLUSIVE_GATEWAY") {
-        ctx.beginPath(); ctx.moveTo(-7,-7); ctx.lineTo(7,7); ctx.moveTo(7,-7); ctx.lineTo(-7,7); ctx.stroke();
-      } else {
-        ctx.beginPath(); ctx.moveTo(0,-9); ctx.lineTo(0,9); ctx.moveTo(-9,0); ctx.lineTo(9,0); ctx.stroke();
-      }
+      if (kind === "EXCLUSIVE_GATEWAY") { ctx.beginPath(); ctx.moveTo(-7,-7); ctx.lineTo(7,7); ctx.moveTo(7,-7); ctx.lineTo(-7,7); ctx.stroke(); }
+      else { ctx.beginPath(); ctx.moveTo(0,-9); ctx.lineTo(0,9); ctx.moveTo(-9,0); ctx.lineTo(9,0); ctx.stroke(); }
       break;
+    case "POOL":
+    case "LANE": {
+      ctx.fillStyle = kind === "POOL" ? (fill || "#f8fafc") : (fill || "#ffffff");
+      ctx.strokeStyle = selected ? "#2563eb" : stroke;
+      ctx.lineWidth = selected ? 2.5 : 1.5;
+      ctx.beginPath(); ctx.rect(-w/2, -h/2, w, h); ctx.fill(); ctx.stroke();
+      // header band
+      const headerW = 28;
+      ctx.beginPath(); ctx.rect(-w/2, -h/2, headerW, h); ctx.fillStyle = kind === "POOL" ? "#e2e8f0" : "#f1f5f9"; ctx.fill(); ctx.stroke();
+      ctx.save(); ctx.translate(-w/2 + headerW/2, 0); ctx.rotate(-Math.PI/2);
+      ctx.fillStyle = "#334155"; ctx.font = "12px Inter, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText((custom?.label || (kind === "POOL" ? "Pool" : "Carril")).slice(0, 30), 0, 0);
+      ctx.restore();
+      break;
+    }
   }
 }
 
@@ -146,6 +161,17 @@ export function renderDiagram(
   ctx.restore();
 
   const nodeById = new Map(diagram.nodes.map(n => [n.id, n]));
+  // draw container nodes (pools/lanes) first as background
+  for (const node of diagram.nodes) {
+    if (!(node.kind.type === "BPMN" && (node.kind.value === "POOL" || node.kind.value === "LANE"))) continue;
+    const s = camera.worldToScreen(node.position.x, node.position.y);
+    const size = getNodeSize(node);
+    const colors = nodeColors(node);
+    ctx.save(); ctx.translate(s.x, s.y); ctx.scale(camera.scale, camera.scale);
+    drawBpmn(ctx, node.kind.value, node.id === selectedNodeId, colors.fill, colors.stroke, {w:size.w,h:size.h,label:node.label});
+    ctx.restore();
+  }
+
   for (const edge of diagram.edges) {
     const sn = nodeById.get(edge.source.node_id), tn = nodeById.get(edge.target.node_id);
     if (!sn || !tn) continue;
@@ -177,6 +203,7 @@ export function renderDiagram(
   }
 
   for (const node of diagram.nodes) {
+    if (node.kind.type === "BPMN" && (node.kind.value === "POOL" || node.kind.value === "LANE")) continue;
     const s = camera.worldToScreen(node.position.x, node.position.y);
     const size = getNodeSize(node);
     const colors = nodeColors(node);

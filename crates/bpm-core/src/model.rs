@@ -114,6 +114,8 @@ pub enum BpmnElementType {
     EndEvent,
     ExclusiveGateway,
     ParallelGateway,
+    Pool,
+    Lane,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

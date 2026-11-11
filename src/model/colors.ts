@@ -17,6 +17,8 @@ export function nodeColors(node: DiagramNode): { fill: string; stroke: string } 
     case "END_EVENT": return { fill: "#fee2e2", stroke: "#dc2626" };
     case "EXCLUSIVE_GATEWAY": return { fill: "#fef9c3", stroke: "#ca8a04" };
     case "PARALLEL_GATEWAY": return { fill: "#f3e8ff", stroke: "#9333ea" };
+    case "POOL": return { fill: "#f8fafc", stroke: "#475569" };
+    case "LANE": return { fill: "#ffffff", stroke: "#64748b" };
   }
 }
 
@@ -37,6 +39,8 @@ export function paletteColor(item: {family: string; oit?: string; bpmn?: string}
     case "END_EVENT": return "#dc2626";
     case "EXCLUSIVE_GATEWAY": return "#ca8a04";
     case "PARALLEL_GATEWAY": return "#9333ea";
+    case "POOL": return "#475569";
+    case "LANE": return "#64748b";
   }
   return "#334155";
 }

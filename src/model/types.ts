@@ -14,7 +14,9 @@ export type BpmnElementType =
   | "START_EVENT"
   | "END_EVENT"
   | "EXCLUSIVE_GATEWAY"
-  | "PARALLEL_GATEWAY";
+  | "PARALLEL_GATEWAY"
+  | "POOL"
+  | "LANE";
 
 export type NodeKind =
   | { type: "OIT"; value: OitKind }

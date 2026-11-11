@@ -157,6 +157,8 @@ const paletteDefs: PaletteItem[] = [
   { id:"end", label:"Fin", family:"BPMN", bpmn:"END_EVENT", notations:["BPMN"] },
   { id:"xgw", label:"Compuerta XOR", family:"BPMN", bpmn:"EXCLUSIVE_GATEWAY", notations:["BPMN"] },
   { id:"pgw", label:"Compuerta AND", family:"BPMN", bpmn:"PARALLEL_GATEWAY", notations:["BPMN"] },
+  { id:"pool", label:"Pool", family:"BPMN", bpmn:"POOL", notations:["BPMN"] },
+  { id:"lane", label:"Carril", family:"BPMN", bpmn:"LANE", notations:["BPMN"] },
 ];
 
 function allowedForNotation(item: PaletteItem, notation: NotationType) {
@@ -187,8 +189,10 @@ function drawPaletteIcon(ic: CanvasRenderingContext2D, item: PaletteItem) {
     const {w,h}=oitNodeSize(item.oit);
     switch(item.oit){case "OPERATION": ic.beginPath(); ic.arc(0,0,w/2,0,Math.PI*2); ic.fill(); ic.stroke(); break; case "INSPECTION": ic.beginPath(); ic.rect(-w/2,-h/2,w,h); ic.fill(); ic.stroke(); break; case "DELAY": ic.beginPath(); ic.moveTo(-w/2,-h/2); ic.lineTo(-w/2,h/2); ic.arc(-w/2,0,h/2,Math.PI/2,-Math.PI/2,true); ic.closePath(); ic.fill(); ic.stroke(); break; case "STORAGE": ic.beginPath(); ic.moveTo(0,h/2); ic.lineTo(-w/2,-h/2); ic.lineTo(w/2,-h/2); ic.closePath(); ic.fill(); ic.stroke(); break; case "COMBINED": ic.beginPath(); ic.rect(-w/2,-h/2,w,h); ic.fill(); ic.stroke(); ic.beginPath(); ic.arc(0,0,w/2-2,0,Math.PI*2); ic.stroke(); break; case "TRANSPORT": ic.beginPath(); ic.moveTo(-w/2,-h/2); ic.lineTo(w/2-10,-h/2); ic.lineTo(w/2,0); ic.lineTo(w/2-10,h/2); ic.lineTo(-w/2,h/2); ic.closePath(); ic.fill(); ic.stroke(); break;}
   } else if (item.bpmn) {
-    const {w,h}=bpmnNodeSize(item.bpmn);
-    switch(item.bpmn){case "TASK": {const r=8; ic.beginPath(); ic.moveTo(-w/2+r,-h/2); ic.lineTo(w/2-r,-h/2); ic.quadraticCurveTo(w/2,-h/2,w/2,-h/2+r); ic.lineTo(w/2,h/2-r); ic.quadraticCurveTo(w/2,h/2,w/2-r,h/2); ic.lineTo(-w/2+r,h/2); ic.quadraticCurveTo(-w/2,h/2,-w/2,h/2-r); ic.lineTo(-w/2,-h/2+r); ic.quadraticCurveTo(-w/2,-h/2,-w/2+r,-h/2); ic.closePath(); ic.fill(); ic.stroke(); break;} case "START_EVENT": ic.beginPath(); ic.arc(0,0,w/2,0,Math.PI*2); ic.fill(); ic.stroke(); break; case "END_EVENT": ic.beginPath(); ic.arc(0,0,w/2,0,Math.PI*2); ic.fill(); ic.stroke(); ic.beginPath(); ic.arc(0,0,w/2-4,0,Math.PI*2); ic.stroke(); break; case "EXCLUSIVE_GATEWAY": case "PARALLEL_GATEWAY": ic.beginPath(); ic.moveTo(0,-h/2); ic.lineTo(w/2,0); ic.lineTo(0,h/2); ic.lineTo(-w/2,0); ic.closePath(); ic.fill(); ic.stroke(); ic.lineWidth=2; if(item.bpmn==="EXCLUSIVE_GATEWAY"){ic.beginPath();ic.moveTo(-6,-6);ic.lineTo(6,6);ic.moveTo(6,-6);ic.lineTo(-6,6);ic.stroke();} else {ic.beginPath();ic.moveTo(0,-8);ic.lineTo(0,8);ic.moveTo(-8,0);ic.lineTo(8,0);ic.stroke();} break;}
+    const sz = bpmnNodeSize(item.bpmn);
+    const w = item.bpmn === "POOL" || item.bpmn === "LANE" ? 40 : sz.w;
+    const h = item.bpmn === "POOL" || item.bpmn === "LANE" ? 26 : sz.h;
+    switch(item.bpmn){case "TASK": {const r=8; ic.beginPath(); ic.moveTo(-w/2+r,-h/2); ic.lineTo(w/2-r,-h/2); ic.quadraticCurveTo(w/2,-h/2,w/2,-h/2+r); ic.lineTo(w/2,h/2-r); ic.quadraticCurveTo(w/2,h/2,w/2-r,h/2); ic.lineTo(-w/2+r,h/2); ic.quadraticCurveTo(-w/2,h/2,-w/2,h/2-r); ic.lineTo(-w/2,-h/2+r); ic.quadraticCurveTo(-w/2,-h/2,-w/2+r,-h/2); ic.closePath(); ic.fill(); ic.stroke(); break;} case "START_EVENT": ic.beginPath(); ic.arc(0,0,sz.w/2,0,Math.PI*2); ic.fill(); ic.stroke(); break; case "END_EVENT": ic.beginPath(); ic.arc(0,0,sz.w/2,0,Math.PI*2); ic.fill(); ic.stroke(); ic.beginPath(); ic.arc(0,0,sz.w/2-4,0,Math.PI*2); ic.stroke(); break; case "EXCLUSIVE_GATEWAY": case "PARALLEL_GATEWAY": ic.beginPath(); ic.moveTo(0,-sz.h/2); ic.lineTo(sz.w/2,0); ic.lineTo(0,sz.h/2); ic.lineTo(-sz.w/2,0); ic.closePath(); ic.fill(); ic.stroke(); ic.lineWidth=2; if(item.bpmn==="EXCLUSIVE_GATEWAY"){ic.beginPath();ic.moveTo(-6,-6);ic.lineTo(6,6);ic.moveTo(6,-6);ic.lineTo(-6,6);ic.stroke();} else {ic.beginPath();ic.moveTo(0,-8);ic.lineTo(0,8);ic.moveTo(-8,0);ic.lineTo(8,0);ic.stroke();} break; case "POOL": case "LANE": ic.beginPath(); ic.rect(-w/2,-h/2,w,h); ic.fill(); ic.stroke(); ic.beginPath(); ic.rect(-w/2,-h/2,8,h); ic.fillStyle=color+"55"; ic.fill(); ic.stroke(); break; }
   }
   ic.restore();
 }

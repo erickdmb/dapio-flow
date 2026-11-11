@@ -27,6 +27,8 @@ export function bpmnLabel(kind: BpmnElementType): string {
     case "END_EVENT": return "Fin";
     case "EXCLUSIVE_GATEWAY": return "Compuerta exclusiva";
     case "PARALLEL_GATEWAY": return "Compuerta paralela";
+    case "POOL": return "Pool";
+    case "LANE": return "Carril";
   }
 }
 
@@ -62,14 +64,15 @@ export function createOitNode(kind: OitKind, x: number, y: number, index: number
 
 export function createBpmnNode(kind: BpmnElementType, x: number, y: number, index: number): DiagramNode {
   const t = kind === "TASK" ? 20 : null;
+  const isContainer = kind === "POOL" || kind === "LANE";
   return {
     id: crypto.randomUUID(),
     kind: { type: "BPMN", value: kind },
     label: `${bpmnLabel(kind)} ${index}`,
     position: { x, y },
-    size: null,
+    size: isContainer ? { width: kind === "POOL" ? 600 : 560, height: kind === "POOL" ? 220 : 120 } : null,
     metrics: { time_seconds: t, time_value: t, time_unit: "SECONDS", distance_meters: null, cost: null },
     resource: null,
-    ports: defaultPorts(),
+    ports: isContainer ? [] : defaultPorts(),
   };
 }

@@ -8,6 +8,7 @@ import type { DiagramEdge, OitKind, ProjectDocument } from "./model/types";
 import { diagramToCsv, downloadCsv } from "./export/csv";
 import { documentToDapExcelXml, downloadExcel } from "./export/excel";
 import { documentToBpmnXml, downloadBpmn } from "./export/bpmn";
+import { importBpmnFromFilePicker } from "./import/bpmn";
 import { openDocument, saveDocument } from "./persistence";
 
 const canvas = document.getElementById("diagram-canvas") as HTMLCanvasElement | null;
@@ -206,6 +207,14 @@ document.getElementById("btn-export-bpmn")?.addEventListener("click", () => {
   const name = `${(doc.metadata.name || "proceso").replace(/[^a-z0-9-_]+/gi, "_")}.bpmn`;
   downloadBpmn(name, xml);
   draw("BPMN 2.0 exportado");
+});
+document.getElementById("btn-import-bpmn")?.addEventListener("click", async () => {
+  const res = await importBpmnFromFilePicker();
+  if (res.doc && res.doc.diagram) {
+    doc = res.doc;
+    selectedNodeId = null; selectedEdgeId = null; pendingPort = null; oitCounter = 1;
+  }
+  draw(res.message);
 });
 
 window.addEventListener("keydown", (e) => {

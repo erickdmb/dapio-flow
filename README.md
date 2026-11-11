@@ -42,5 +42,6 @@ bpm-rust/
 ```
 
 ## 5. Estado actual
-- Especificaciones iniciales actualizadas y primer modelo de datos diseñado (`docs/MODEL.md`, `crates/bpm-core`).
-- Estructura base del proyecto creada (scaffold). La compilación requiere toolchain de Rust y dependencias de Tauri instaladas en el entorno.
+- **Versión:** `0.1.0-alpha.1` (alfa).
+- Especificaciones actualizadas, modelo de datos v0.1 y editor web/Tauri en evolución (`docs/MODEL.md`, `crates/bpm-core`, `src/`, `src-tauri/`).
+- Incluye lienzo con elementos DOP/DAP/BPMN, conexiones, tiempos, validación, análisis detallado y exportaciones. La compilación de escritorio requiere toolchain de Rust y dependencias de Tauri.

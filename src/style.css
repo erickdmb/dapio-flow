@@ -30,6 +30,8 @@ html, body, #app { height: 100%; margin: 0; color: var(--text); background: var(
 button { padding: 6px 10px; font-size: 12px; border: 1px solid var(--border); background: #fff; border-radius: 8px; cursor: pointer; color: var(--text); }
 button:hover { background: #f7faff; border-color: #b9cdf5; }
 button.active { background: var(--primary); color: #fff; border-color: #1d4ed8; }
+.conn-tool { display:flex; align-items:center; gap:4px; font-size:12px; color:var(--muted); }
+.conn-tool select { padding:4px 6px; border:1px solid var(--border); border-radius:8px; background:#fff; font-size:12px; }
 .sep { width: 1px; height: 22px; background: var(--border); display: inline-block; }
 
 .workspace-area { display: grid; grid-template-columns: 220px 1fr 300px; min-height: 0; }

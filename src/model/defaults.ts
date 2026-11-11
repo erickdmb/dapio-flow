@@ -34,7 +34,7 @@ export function bpmnLabel(kind: BpmnElementType): string {
 
 export function createEmptyDocument(): ProjectDocument {
   return {
-    schema_version: "0.1.0",
+    schema_version: "0.1.0-alpha.1",
     metadata: {
       name: "Nuevo proceso",
       notation: "DAP",

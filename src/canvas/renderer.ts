@@ -184,11 +184,13 @@ export function renderDiagram(
     if (!a || !b) continue;
     const pts = orthogonalPath(a, b, edge.source.port_id, edge.target.port_id).map(p => camera.worldToScreen(p.x, p.y));
     ctx.save();
-    ctx.strokeStyle = edge.id === selectedEdgeId ? "#2563eb" : "#64748b";
-    ctx.fillStyle = edge.id === selectedEdgeId ? "#2563eb" : "#64748b";
+    const color = edge.id === selectedEdgeId ? "#2563eb" : (edge.kind === "ASSOCIATION" ? "#6b7280" : "#64748b");
+    ctx.strokeStyle = color; ctx.fillStyle = color;
     ctx.lineWidth = edge.id === selectedEdgeId ? 2.5 : 1.5;
+    if (edge.kind === "ASSOCIATION") ctx.setLineDash([6,4]);
     drawRoundedPolyline(ctx, pts, 8); ctx.stroke();
-    if (pts.length >= 2) drawArrowHead(ctx, pts[pts.length - 2], pts[pts.length - 1], 9);
+    ctx.setLineDash([]);
+    if (edge.kind === "SEQUENCE_FLOW" && pts.length >= 2) drawArrowHead(ctx, pts[pts.length - 2], pts[pts.length - 1], 9);
     ctx.restore();
   }
 

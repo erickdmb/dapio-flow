@@ -188,23 +188,15 @@ function addNodeFromPalette(item: PaletteItem, worldX: number, worldY: number) {
   const snap = (v:number)=>Math.round(v/20)*20;
   let x = snap(worldX), y = snap(worldY);
 
-  // BPMN rule: lanes must be inside a pool
+  // BPMN rule: lanes must be inside a pool (auto-grow)
   if (doc.metadata.notation === "BPMN" && item.family === "BPMN" && item.bpmn === "LANE") {
     const pools = doc.diagram.nodes.filter(n => n.kind.type === "BPMN" && n.kind.value === "POOL");
     if (pools.length === 0) { requestDraw("Regla BPMN: primero agrega un Pool para colocar carriles dentro"); return; }
-    // place inside nearest pool
     let pool = pools.find(p => { const pw=p.size?.width??600, ph=p.size?.height??220; return Math.abs(x-p.position.x)<=pw/2 && Math.abs(y-p.position.y)<=ph/2; }) || pools[0];
-    const pw = pool.size?.width ?? 600, ph = pool.size?.height ?? 220;
-    const laneW = Math.max(200, pw - 40), laneH = 120;
-    x = pool.position.x;
-    const existingLanes = doc.diagram.nodes.filter(n => n.kind.type==='BPMN' && n.kind.value==='LANE' && Math.abs(n.position.x-pool.position.x)<pw/2 && Math.abs(n.position.y-pool.position.y)<ph/2).length;
-    y = pool.position.y - ph/2 + 60 + existingLanes * 120;
-    // clamp inside
-    y = Math.max(pool.position.y - ph/2 + 60, Math.min(y, pool.position.y + ph/2 - 60));
     snapshot();
-    const node = createBpmnNode("LANE", x, y, next());
-    node.size = { width: laneW, height: laneH };
+    const node = createBpmnNode("LANE", pool.position.x, pool.position.y, next());
     doc.diagram.nodes.push(node); selectedNodeId = node.id; selectedEdgeId = null;
+    layoutPoolLanes(pool.id);
     requestDraw();
     return;
   }
@@ -216,7 +208,24 @@ function addNodeFromPalette(item: PaletteItem, worldX: number, worldY: number) {
   if ((doc.metadata.notation === "DAP" || doc.metadata.notation === "DOP") && node.metrics.time_seconds == null) {
     node.metrics.time_seconds = 20; node.metrics.time_value = 20; node.metrics.time_unit = "SECONDS";
   }
+  // if placing inside a BPMN pool, grow pool to fit
+  if (doc.metadata.notation === "BPMN" && node.kind.type === "BPMN" && node.kind.value === "POOL") {
+    // pool added
+  }
   doc.diagram.nodes.push(node); selectedNodeId = node.id; selectedEdgeId = null;
+  // auto-grow pool if element placed inside any pool
+  if (doc.metadata.notation === "BPMN") {
+    const pools = doc.diagram.nodes.filter(n => n.kind.type==='BPMN' && n.kind.value==='POOL');
+    for (const p of pools) {
+      const pw=p.size?.width??600, ph=p.size?.height??220;
+      if (Math.abs(node.position.x-p.position.x) < pw/2 && Math.abs(node.position.y-p.position.y) < ph/2) {
+        // ensure pool tall enough below lowest content
+        const bottom = node.position.y + (node.size?.height??50)/2;
+        const pBottom = p.position.y + ph/2;
+        if (bottom > pBottom - 20) { p.size = {width: pw, height: ph + (bottom - (pBottom - 20)) + 40}; }
+      }
+    }
+  }
   requestDraw();
 }
 
@@ -241,6 +250,39 @@ function drawPaletteIcon(ic: CanvasRenderingContext2D, item: PaletteItem) {
     }
   }
   ic.restore();
+}
+
+function lanesInPool(poolId: string) {
+  const pool = doc.diagram.nodes.find(n => n.id === poolId);
+  if (!pool) return [] as any[];
+  const pw = pool.size?.width ?? 600, ph = pool.size?.height ?? 220;
+  const px1 = pool.position.x - pw/2, px2 = pool.position.x + pw/2, py1 = pool.position.y - ph/2, py2 = pool.position.y + ph/2;
+  return doc.diagram.nodes.filter(n => n.kind.type==='BPMN' && n.kind.value==='LANE').filter(n => {
+    const cx = n.position.x, cy = n.position.y;
+    return cx >= px1 && cx <= px2 && cy >= py1-1 && cy <= py2+1;
+  }).sort((a,b)=>a.position.y - b.position.y);
+}
+function layoutPoolLanes(poolId: string) {
+  const pool = doc.diagram.nodes.find(n => n.id === poolId);
+  if (!pool || pool.kind.type!=='BPMN' || pool.kind.value!=='POOL') return;
+  const lanes = lanesInPool(poolId);
+  if (!lanes.length) return;
+  const pw = pool.size?.width ?? 600;
+  const header = 0;
+  let y = (pool.position.y - (pool.size?.height ?? 220)/2) + header;
+  for (const lane of lanes) {
+    const lh = Math.max(100, lane.size?.height ?? 120);
+    lane.size = { width: Math.max(200, pw - 40), height: lh };
+    lane.position.x = pool.position.x;
+    lane.position.y = y + lh/2;
+    y += lh;
+  }
+  const neededH = Math.max(220, (y - (pool.position.y - (pool.size?.height ?? 220)/2)) + 10);
+  pool.size = { width: pw, height: neededH };
+  // re-center lanes vertically relative to new pool top
+  const top = pool.position.y - neededH/2;
+  let yy = top;
+  for (const lane of lanes) { const lh = lane.size?.height ?? 120; lane.position.y = yy + lh/2; yy += lh; }
 }
 
 function renderPalette() {
@@ -395,7 +437,7 @@ window.addEventListener("mousemove", e=>{
   const nh=findPortAtWorld(w.x,w.y); const hc=(nh?.nodeId!==hoverPort?.nodeId||nh?.portId!==hoverPort?.portId); hoverPort=nh;
   if(panning){ camera.pan(e.clientX-last.x,e.clientY-last.y); last={x:e.clientX,y:e.clientY}; requestDraw(); return; }
   if(connectingDrag){ requestDraw(); return; }
-  if(resizingNodeId){ const node=doc.diagram.nodes.find(n=>n.id===resizingNodeId); if(node){ const sz=node.size || {width: node.kind.type==='BPMN'&&node.kind.value==='POOL'?600:560, height: node.kind.type==='BPMN'&&node.kind.value==='POOL'?220:120}; sz.width=Math.max(200, sz.width + (e.clientX-last.x)/camera.scale); sz.height=Math.max(80, sz.height + (e.clientY-last.y)/camera.scale); node.size=sz; last={x:e.clientX,y:e.clientY}; requestDraw(); } return; }
+  if(resizingNodeId){ const node=doc.diagram.nodes.find(n=>n.id===resizingNodeId); if(node){ const sz=node.size || {width: node.kind.type==='BPMN'&&node.kind.value==='POOL'?600:560, height: node.kind.type==='BPMN'&&node.kind.value==='POOL'?220:120}; sz.width=Math.max(300, sz.width + (e.clientX-last.x)/camera.scale); sz.height=Math.max(120, sz.height + (e.clientY-last.y)/camera.scale); node.size=sz; if(node.kind.type==='BPMN' && node.kind.value==='POOL') layoutPoolLanes(node.id); last={x:e.clientX,y:e.clientY}; requestDraw(); } return; }
   if(draggingNode && selectedNodeId){ const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(node){ if(!dragSnapshotTaken){snapshot(); dragSnapshotTaken=true;} node.position.x+=(e.clientX-last.x)/camera.scale; node.position.y+=(e.clientY-last.y)/camera.scale; last={x:e.clientX,y:e.clientY}; requestDraw(); } return; }
   if(hc) requestDraw();
 });
@@ -415,18 +457,19 @@ window.addEventListener("mouseup", e=>{
     connectingDrag=null; mouseWorld=null; if(!connectMode) pendingPort=null;
   }
   if(draggingNode && selectedNodeId){ const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(node){ node.position.x=Math.round(node.position.x/20)*20; node.position.y=Math.round(node.position.y/20)*20; } }
-  if(resizingNodeId){ const node=doc.diagram.nodes.find(n=>n.id===resizingNodeId); if(node && node.size){ node.size.width=Math.round(node.size.width/20)*20; node.size.height=Math.round(node.size.height/20)*20; } }
-  // keep lanes inside pools on move end
-  if (draggingNode && selectedNodeId) {
+  if(resizingNodeId){ const node=doc.diagram.nodes.find(n=>n.id===resizingNodeId); if(node && node.size){ node.size.width=Math.round(node.size.width/20)*20; node.size.height=Math.round(node.size.height/20)*20; if(node.kind.type==='BPMN' && node.kind.value==='POOL') layoutPoolLanes(node.id); } }
+  // keep lanes inside pools and auto-layout/grow
+  if (selectedNodeId) {
     const node = doc.diagram.nodes.find(n=>n.id===selectedNodeId);
     if (node && doc.metadata.notation==='BPMN' && node.kind.type==='BPMN' && node.kind.value==='LANE') {
       const pools = doc.diagram.nodes.filter(n=>n.kind.type==='BPMN' && n.kind.value==='POOL');
       if (pools.length) {
         const pool = pools.find(p=>{ const pw=p.size?.width??600, ph=p.size?.height??220; return Math.abs(node.position.x-p.position.x)<=pw/2 && Math.abs(node.position.y-p.position.y)<=ph/2; }) || pools[0];
-        const pw=pool.size?.width??600, ph=pool.size?.height??220, lw=node.size?.width??560, lh=node.size?.height??120;
-        node.position.x = Math.max(pool.position.x - pw/2 + lw/2 + 2, Math.min(pool.position.x + pw/2 - lw/2 - 2, node.position.x));
-        node.position.y = Math.max(pool.position.y - ph/2 + lh/2 + 2, Math.min(pool.position.y + ph/2 - lh/2 - 2, node.position.y));
+        layoutPoolLanes(pool.id);
       }
+    }
+    if (node && doc.metadata.notation==='BPMN' && node.kind.type==='BPMN' && node.kind.value==='POOL') {
+      layoutPoolLanes(node.id);
     }
   }
   panning=false; draggingNode=false; dragSnapshotTaken=false; resizingNodeId=null; canvas.style.cursor="default"; requestDraw();

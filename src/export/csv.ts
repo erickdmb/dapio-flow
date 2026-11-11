@@ -43,10 +43,10 @@ function orderedNodes(diagram: Diagram): DiagramNode[] {
 export function diagramToCsv(diagram: Diagram): string {
   const header = ["Numero_Secuencia","Nombre_Actividad","Tipo_Actividad_OIT","Tiempo_Segundos","Distancia_Metros","Recurso_Asignado"];
   const rows = [header.join(",")];
-  const nodes = orderedNodes(diagram);
+  const nodes = orderedNodes(diagram).filter(n => n.kind.type !== "AUX");
   nodes.forEach((n, i) => {
     const row = [
-      String(i + 1),
+      n.activity_number ?? String(i + 1),
       n.label || "",
       oitTypeLabel(n),
       n.metrics.time_seconds ?? "",

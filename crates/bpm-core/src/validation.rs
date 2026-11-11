@@ -4,7 +4,7 @@ use petgraph::algo::is_cyclic_directed;
 use petgraph::graphmap::DiGraphMap;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Diagram, NodeKind, NotationType, OitKind};
+use crate::model::{AuxKind, Diagram, NodeKind, NotationType, OitKind};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Issue {
@@ -117,14 +117,14 @@ pub fn validate_diagram(diagram: &Diagram, notation: &NotationType) -> Validatio
     }
 
     // Topology (basic)
-    if diagram.nodes.len() > 1 {
+    if diagram.nodes.iter().filter(|n| !matches!(&n.kind, NodeKind::Aux(AuxKind::Text))).count() > 1 {
         let connected: HashSet<&str> = diagram
             .edges
             .iter()
             .flat_map(|e| [e.source.node_id.as_str(), e.target.node_id.as_str()])
             .collect();
         for node in &diagram.nodes {
-            if !connected.contains(node.id.as_str()) {
+            if !matches!(&node.kind, NodeKind::Aux(AuxKind::Text)) && !connected.contains(node.id.as_str()) {
                 issues.push(Issue {
                     code: "ORPHAN_NODE".into(),
                     message: "Nodo huérfano (sin conexiones)".into(),

@@ -106,3 +106,16 @@ bpm-rust/
 - Incluye lienzo con elementos DOP/DAP/BPMN (sin mezclar notaciones en un mismo diagrama), conexiones, tiempos, validación, análisis detallado y exportaciones. La compilación de escritorio requiere toolchain de Rust y dependencias de Tauri.
 
 La importación BPMN actual admite un subconjunto de elementos y no garantiza recuperar todos los detalles de un XML externo. Usa `.bpmr.json` para conservar y volver a editar el proyecto completo.
+
+## Exportación PDF y orientación BPMN
+
+- Usa **Exportar → PDF (diagrama centrado)** para descargar el diagrama completo en una página A4. La orientación de la página se adapta al gráfico y mantiene márgenes iguales a ambos lados. La exportación incluye los elementos fuera de la vista actual y omite la cuadrícula y los indicadores de selección.
+- Para cambiar un pool a disposición **horizontal** o **vertical**, selecciónalo y usa **Propiedades → Orientación del pool**. Sus carriles y actividades cambian de disposición; el texto de las actividades conserva su orientación de lectura.
+- La orientación se conserva en los proyectos `.bpmr.json` y en la exportación BPMN XML. La importación XML sigue limitada al subconjunto de elementos descrito anteriormente.
+
+## Texto, numeración y uniones en DOP
+
+- **Texto libre:** arrastra este elemento desde «Texto y uniones» y edita su contenido en Propiedades. Admite varias líneas para títulos, materiales y notas.
+- **Numeración:** los nuevos símbolos DOP reciben un número visible en su interior, con secuencias independientes por tipo de símbolo. Puedes cambiarlo o borrarlo en **Propiedades → Número del símbolo**, también en diagramas existentes.
+- **Unir líneas:** arrastra un conector desde el puerto de un símbolo y suéltalo sobre otra línea. Se creará un punto de unión compartido. También puedes soltar **Unión de líneas** sobre una línea existente y conectar otras ramas a ese punto.
+- El texto y los puntos de unión se guardan con el proyecto y aparecen en el PDF; se excluyen de la tabla de actividades y de los conteos de operaciones e inspecciones. CSV y Excel conservan la numeración editada.

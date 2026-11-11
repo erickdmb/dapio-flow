@@ -125,10 +125,18 @@ pub enum BpmnElementType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum AuxKind {
+    Text,
+    Junction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", content = "value", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum NodeKind {
     Oit(OitKind),
     Bpmn(BpmnElementType),
+    Aux(AuxKind),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -146,8 +154,19 @@ pub struct Port {
     pub side: PortSide,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PoolOrientation {
+    Horizontal,
+    Vertical,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity_number: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub orientation: Option<PoolOrientation>,
     pub id: NodeId,
     pub kind: NodeKind,
     pub label: String,

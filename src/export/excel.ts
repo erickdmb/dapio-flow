@@ -55,7 +55,7 @@ function cell(type: "String" | "Number", value: unknown): string {
 
 export function documentToDapExcelXml(doc: ProjectDocument): string {
   const summary = calculateDapSummary(doc.diagram);
-  const nodes = orderedNodes(doc.diagram);
+  const nodes = orderedNodes(doc.diagram).filter(n => n.kind.type !== "AUX");
   const date = new Date().toISOString().slice(0, 10);
   const method = doc.metadata.method === "TO_BE" ? "Propuesto" : "Actual";
   const rows: string[] = [];
@@ -66,7 +66,7 @@ export function documentToDapExcelXml(doc: ProjectDocument): string {
   rows.push(`<Row></Row>`);
   rows.push(`<Row ss:StyleID="header">${["N°","Descripción","Tipo de Actividad","Tiempo (s)","Distancia (m)","Recurso / Máquina"].map(h=>cell("String",h)).join("")}</Row>`);
   nodes.forEach((n, i) => {
-    rows.push(`<Row>${cell("Number", i+1)}${cell("String", n.label||"")}${cell("String", oitTypeLabel(n))}${cell("Number", n.metrics.time_seconds ?? 0)}${cell("Number", n.metrics.distance_meters ?? 0)}${cell("String", n.resource || "")}</Row>`);
+    rows.push(`<Row>${cell("String", n.activity_number ?? String(i+1))}${cell("String", n.label||"")}${cell("String", oitTypeLabel(n))}${cell("Number", n.metrics.time_seconds ?? 0)}${cell("Number", n.metrics.distance_meters ?? 0)}${cell("String", n.resource || "")}</Row>`);
   });
   rows.push(`<Row></Row>`);
   rows.push(`<Row ss:StyleID="header">${cell("String","Resumen de Métricas")}${cell("String","Cantidad/Total")}${cell("String","")}${cell("String","")}${cell("String","")}${cell("String","")}</Row>`);

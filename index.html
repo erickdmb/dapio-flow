@@ -37,13 +37,14 @@
           <div class="menu">
             <button class="menu-btn" data-menu="m-ver">Ver</button>
             <div class="menu-dd" id="m-ver">
-              <button id="m-center">Centrar vista</button>
+              <button id="m-center">Ajustar diagrama a la vista</button>
               <span class="menu-info">Conectores: selecciona tipo en el panel de elementos</span>
             </div>
           </div>
           <div class="menu">
             <button class="menu-btn" data-menu="m-exportar">Exportar</button>
             <div class="menu-dd" id="m-exportar">
+              <button id="m-export-pdf">PDF (diagrama centrado)</button>
               <button id="m-export-csv">CSV (actividades)</button>
               <button id="m-export-xls">Excel Ficha DAP</button>
               <button id="m-export-bpmn">BPMN 2.0 XML</button>
@@ -54,6 +55,7 @@
           <button id="btn-new" title="Nuevo">Nuevo</button>
           <button id="btn-open">Abrir</button>
           <button id="btn-save">Guardar</button>
+          <button id="btn-properties" aria-controls="panel" aria-expanded="false">Propiedades</button>
           <input id="file-open" type="file" accept=".json,.bpmr.json" style="display:none" />
           <input id="file-import-bpmn" type="file" accept=".bpmn,.xml" style="display:none" />
         </div>
@@ -67,7 +69,21 @@
           <div class="palette-legend muted small" id="palette-legend"></div>
         </aside>
         <main class="workspace">
-          <div class="canvas-wrap"><canvas id="diagram-canvas"></canvas></div>
+          <div class="canvas-wrap">
+            <canvas id="diagram-canvas" tabindex="0" aria-label="Lienzo del diagrama. Doble clic en un elemento para editar su nombre."></canvas>
+            <div id="node-label-editor-wrap" class="node-label-editor-wrap hidden">
+              <textarea id="node-label-editor" rows="3" aria-describedby="node-label-editor-help"></textarea>
+              <small id="node-label-editor-help">Ctrl + Enter: guardar · Esc: cancelar</small>
+            </div>
+            <div class="canvas-controls" role="group" aria-label="Zoom del diagrama">
+              <button id="zoom-out" title="Alejar" aria-label="Alejar">−</button>
+              <output id="zoom-value" aria-label="Zoom actual">100%</output>
+              <button id="zoom-in" title="Acercar" aria-label="Acercar">+</button>
+              <span class="control-divider"></span>
+              <button id="zoom-reset" title="Restablecer zoom al 100%">100%</button>
+              <button id="zoom-fit" title="Mostrar todo el diagrama">Ajustar diagrama</button>
+            </div>
+          </div>
           <section class="analysis" id="analysis">
             <div class="analysis-header">
               <strong>Análisis detallado (DAP/DOP)</strong>
@@ -85,6 +101,7 @@
           </section>
         </main>
         <aside class="panel" id="panel">
+          <button id="panel-close" aria-label="Cerrar propiedades">Cerrar</button>
           <h3>Proyecto</h3>
           <div id="project-form">
             <label>Nombre <input id="proj-name" type="text" /></label>
@@ -107,8 +124,17 @@
           <h3>Propiedades</h3>
           <div id="no-selection" class="muted">Selecciona un nodo para editar sus propiedades.</div>
           <div id="node-form" class="hidden">
+            <label id="prop-number-field" class="hidden">Número del símbolo <input id="prop-number" type="text" maxlength="12" placeholder="1" /></label>
+            <label id="prop-text-field" class="hidden">Texto <textarea id="prop-text" rows="4" placeholder="Material, título o nota"></textarea></label>
             <label>Etiqueta <input id="prop-label" type="text" /></label>
+            <label id="pool-orientation-field" class="hidden">Orientación del pool
+              <select id="pool-orientation">
+                <option value="HORIZONTAL">Horizontal</option>
+                <option value="VERTICAL">Vertical</option>
+              </select>
+            </label>
             <label>Tipo <input id="prop-kind" type="text" disabled /></label>
+            <div id="prop-metrics">
             <label>Tiempo
               <div style="display:flex; gap:6px;">
                 <input id="prop-time" type="number" min="0" step="0.1" />
@@ -121,6 +147,7 @@
             </label>
             <label>Distancia (m) <input id="prop-dist" type="number" min="0" step="0.1" /></label>
             <label>Recurso <input id="prop-resource" type="text" /></label>
+            </div>
           </div>
           <h3>Resumen DAP</h3>
           <div id="summary-box" class="summary-box"></div>

@@ -9,12 +9,14 @@ fn port(id: &str, side: PortSide) -> Port {
 
 fn oit_node(id: &str, kind: OitKind, time: f64, dist: f64) -> Node {
     Node {
+        activity_number: None,
+        orientation: None,
         id: id.to_string(),
         kind: NodeKind::Oit(kind),
         label: id.to_string(),
         position: Position { x: 0.0, y: 0.0 },
         size: None,
-        metrics: Metrics { time_seconds: Some(time), distance_meters: Some(dist), cost: None },
+        metrics: Metrics { time_seconds: Some(time), distance_meters: Some(dist), cost: None, ..Metrics::default() },
         resource: None,
         ports: vec![port("n", PortSide::North), port("s", PortSide::South), port("e", PortSide::East), port("w", PortSide::West)],
     }

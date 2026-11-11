@@ -1,6 +1,7 @@
 import type { DiagramNode } from "./types";
 
 export function nodeColors(node: DiagramNode): { fill: string; stroke: string } {
+  if (node.kind.type === "AUX") return { fill: "#334155", stroke: "#334155" };
   if (node.kind.type === "OIT") {
     switch (node.kind.value) {
       case "OPERATION": return { fill: "#dbeafe", stroke: "#2563eb" }; // blue

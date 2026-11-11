@@ -8,6 +8,11 @@ function esc(s: string): string {
 function bpmnElementForNode(n: DiagramNode): { tag: string; attrs: string; body?: string } {
   const id = `node_${n.id.replace(/[^a-zA-Z0-9_]/g, "")}`;
   const name = esc(n.label || id);
+  if (n.kind.type === "AUX") {
+    return n.kind.value === "TEXT"
+      ? { tag: "bpmn:textAnnotation", attrs: `id="${id}"`, body: `<bpmn:text>${name}</bpmn:text>` }
+      : { tag: "bpmn:exclusiveGateway", attrs: `id="${id}" gatewayDirection="Converging"` };
+  }
   if (n.kind.type === "BPMN") {
     switch (n.kind.value) {
       case "USER_TASK": return { tag: "bpmn:userTask", attrs: `id="${id}" name="${name}"` };
@@ -93,7 +98,7 @@ export function documentToBpmnXml(doc: ProjectDocument): string {
   const shapes = diagram.nodes.map(n => {
     const b = boundsForNode(n);
     const nid = nodeIdMap.get(n.id)!;
-    return `<bpmndi:BPMNShape id="${nid}_di" bpmnElement="${nid}">
+    return `<bpmndi:BPMNShape id="${nid}_di" bpmnElement="${nid}"${isKind(n, "POOL") || isKind(n, "LANE") ? ` isHorizontal="${n.orientation !== "VERTICAL"}"` : ""}>
         <dc:Bounds x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" />
       </bpmndi:BPMNShape>`;
   }).join("\n      ");

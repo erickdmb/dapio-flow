@@ -26,7 +26,8 @@ export type BpmnElementType =
 
 export type NodeKind =
   | { type: "OIT"; value: OitKind }
-  | { type: "BPMN"; value: BpmnElementType };
+  | { type: "BPMN"; value: BpmnElementType }
+  | { type: "AUX"; value: "TEXT" | "JUNCTION" };
 
 export interface Position { x: number; y: number }
 export interface Size { width: number; height: number }
@@ -44,7 +45,11 @@ export interface Metrics {
 export type PortSide = "NORTH" | "SOUTH" | "EAST" | "WEST";
 export interface Port { id: string; side: PortSide }
 
+export type PoolOrientation = "HORIZONTAL" | "VERTICAL";
+
 export interface DiagramNode {
+  activity_number?: string | null;
+  orientation?: PoolOrientation;
   id: string;
   kind: NodeKind;
   label: string;

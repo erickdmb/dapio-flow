@@ -82,3 +82,18 @@ export function createBpmnNode(kind: BpmnElementType, x: number, y: number, inde
     ports: noPorts ? [] : defaultPorts(),
   };
 }
+export function createAuxNode(kind: "TEXT" | "JUNCTION", x: number, y: number): DiagramNode {
+  return {
+    id: crypto.randomUUID(), kind: { type: "AUX", value: kind },
+    label: kind === "TEXT" ? "Texto" : "", position: { x, y },
+    size: kind === "TEXT" ? { width: 180, height: 36 } : { width: 12, height: 12 },
+    metrics: {}, resource: null, ports: kind === "JUNCTION" ? defaultPorts() : [],
+  };
+}
+
+export function nextActivityNumber(nodes: DiagramNode[], kind: OitKind): string {
+  const used = new Set(nodes.filter(n => n.kind.type === "OIT" && n.kind.value === kind).map(n => n.activity_number));
+  let number = 1;
+  while (used.has(String(number))) number++;
+  return String(number);
+}

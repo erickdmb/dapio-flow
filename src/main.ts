@@ -1,7 +1,9 @@
 import "./style.css";
+import { resizePool, setPoolOrientation } from "./model/containers";
+import { joinEdgeAt } from "./model/connections";
 import { Camera } from "./canvas/camera";
-import { hitTestEdge, hitTestNode, hitTestPort, nearestPort, oitNodeSize, bpmnNodeSize, getNodeSize, renderDiagram } from "./canvas/renderer";
-import { bpmnLabel, createBpmnNode, createEmptyDocument, createOitNode } from "./model/defaults";
+import { drawBpmnPaletteIcon, hitTestEdge, hitTestNodeLabel, hitTestNode, hitTestPort, nearestPort, oitNodeSize, bpmnNodeSize, getNodeSize, renderDiagram } from "./canvas/renderer";
+import { createAuxNode, nextActivityNumber, bpmnLabel, createBpmnNode, createEmptyDocument, createOitNode } from "./model/defaults";
 import { calculateDapSummary } from "./model/summary";
 import { validateDiagram } from "./model/validation";
 import { formatDuration, syncTimeMetrics } from "./model/time";
@@ -12,6 +14,8 @@ import { diagramToCsv, downloadCsv } from "./export/csv";
 import { documentToDapExcelXml, downloadExcel } from "./export/excel";
 import { documentToBpmnXml, downloadBpmn } from "./export/bpmn";
 import { importBpmnFromFilePicker } from "./import/bpmn";
+import { diagramBounds } from "./export/pdf-layout";
+import { downloadDiagramPdf } from "./export/pdf";
 import { openDocument, saveDocument } from "./persistence";
 
 const canvas = document.getElementById("diagram-canvas") as HTMLCanvasElement | null;
@@ -46,7 +50,16 @@ const summarySheet = document.getElementById("summary-sheet");
 const analysisEl = document.getElementById("analysis");
 const workspaceEl = document.querySelector(".workspace") as HTMLElement | null;
 let paletteKey = "";
+const paletteSections = new Map<string, boolean>();
+const zoomValue = document.getElementById("zoom-value");
+const inlineEditor = document.getElementById("node-label-editor") as HTMLTextAreaElement | null;
+const inlineEditorWrap = document.getElementById("node-label-editor-wrap");
+let editingNodeId: string | null = null;
 
+const orientationField = document.getElementById("pool-orientation-field");
+const orientationSelect = document.getElementById("pool-orientation") as HTMLSelectElement | null;
+const propNumber = document.getElementById("prop-number") as HTMLInputElement | null;
+const propText = document.getElementById("prop-text") as HTMLTextAreaElement | null;
 const propLabel = document.getElementById("prop-label") as HTMLInputElement | null;
 const propKind = document.getElementById("prop-kind") as HTMLInputElement | null;
 const propTime = document.getElementById("prop-time") as HTMLInputElement | null;
@@ -97,10 +110,10 @@ function renderAnalysis() {
   analysisEl?.classList.toggle("hidden", !show);
   workspaceEl?.classList.toggle("no-analysis", !show);
   if (!show) return;
-  const nodes = orderedNodesForTable();
+  const nodes = orderedNodesForTable().filter(n => n.kind.type !== "AUX");
   const method = doc.metadata.method === "TO_BE" ? "Propuesto" : "Actual";
   if (analysisTbody) {
-    analysisTbody.innerHTML = nodes.map((n,i)=>`<tr><td>${i+1}</td><td>${method}</td><td>${(n.label||"").replace(/</g,"&lt;")}</td><td>${typeLabel(n)}</td><td>${formatDuration(n.metrics.time_seconds||0)} (${n.metrics.time_seconds||0}s)</td><td>${n.metrics.distance_meters??0} m</td><td>${(n.resource||"").replace(/</g,"&lt;")}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Sin actividades</td></tr>`;
+    analysisTbody.innerHTML = nodes.map((n,i)=>`<tr><td>${(n.activity_number ?? String(i+1)).replace(/</g,"&lt;")}</td><td>${method}</td><td>${(n.label||"").replace(/</g,"&lt;")}</td><td>${typeLabel(n)}</td><td>${formatDuration(n.metrics.time_seconds||0)} (${n.metrics.time_seconds||0}s)</td><td>${n.metrics.distance_meters??0} m</td><td>${(n.resource||"").replace(/</g,"&lt;")}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Sin actividades</td></tr>`;
   }
   const s = calculateDapSummary(doc.diagram);
   if (summarySheet) {
@@ -121,10 +134,20 @@ function renderAnalysis() {
 function syncPanel() {
   syncProjectForm();
   const node = selectedNodeId ? doc.diagram.nodes.find(n => n.id === selectedNodeId) : null;
+  const isPool = node?.kind.type === "BPMN" && node.kind.value === "POOL";
+  document.getElementById("prop-metrics")?.classList.toggle("hidden", node?.kind.type === "AUX");
+  const freeText = node?.kind.type === "AUX" && node.kind.value === "TEXT";
+  document.getElementById("prop-number-field")?.classList.toggle("hidden", !(node?.kind.type === "OIT" && doc.metadata.notation === "DOP"));
+  document.getElementById("prop-text-field")?.classList.toggle("hidden", !freeText);
+  propLabel?.parentElement?.classList.toggle("hidden", freeText);
+  if (propNumber && document.activeElement !== propNumber) propNumber.value = node?.activity_number ?? "";
+  if (propText && document.activeElement !== propText) propText.value = node?.label ?? "";
+  orientationField?.classList.toggle("hidden", !isPool);
+  if (orientationSelect && isPool) orientationSelect.value = node.orientation ?? "HORIZONTAL";
   if (node && nodeForm && noSelection) {
     nodeForm.classList.remove("hidden"); noSelection.classList.add("hidden");
     if (propLabel && document.activeElement !== propLabel) propLabel.value = node.label || "";
-    if (propKind) propKind.value = node.kind.type === "OIT" ? `OIT / ${node.kind.value}` : `BPMN / ${node.kind.value}`;
+    if (propKind) propKind.value = node.kind.type === "OIT" ? `OIT / ${node.kind.value}` : `${node.kind.type} / ${node.kind.value}`;
     const tv = node.metrics.time_value ?? node.metrics.time_seconds ?? "";
     if (propTime && document.activeElement !== propTime) propTime.value = String(tv);
     if (propTimeUnit && document.activeElement !== propTimeUnit) propTimeUnit.value = node.metrics.time_unit || "SECONDS";
@@ -156,14 +179,18 @@ function draw(extra?: string) {
   const p = canvas!.parentElement!;
   renderDiagram(ctx, p.clientWidth, p.clientHeight, camera, doc.diagram, selectedNodeId, selectedEdgeId, pendingPort || connectingDrag, hoverPort, connectMode || !!connectingDrag, connectingDrag ? mouseWorld : null);
   syncPanel(); renderPalette(); updateStatus(extra);
+  if (zoomValue) zoomValue.textContent = `${(camera.scale * 100).toFixed(camera.scale < 0.1 ? 1 : 0)}%`;
+  positionLabelEditor();
 }
 
 function setConnectMode(on: boolean) { connectMode = on; pendingPort = null; requestDraw(); }
 // connector type selected from palette section
 function next() { return counter++; }
 
-type PaletteItem = { id: string; label: string; family: "OIT"|"BPMN"; oit?: OitKind; bpmn?: BpmnElementType; notations: NotationType[]; };
+type PaletteItem = { id: string; label: string; family: "OIT"|"BPMN"|"AUX"; aux?: "TEXT"|"JUNCTION"; oit?: OitKind; bpmn?: BpmnElementType; notations: NotationType[]; };
 const paletteDefs: PaletteItem[] = [
+  { id:"dop-text", label:"Texto libre", family:"AUX", aux:"TEXT", notations:["DOP"] },
+  { id:"dop-join", label:"Unión de líneas", family:"AUX", aux:"JUNCTION", notations:["DOP"] },
   { id:"op", label:"Operación", family:"OIT", oit:"OPERATION", notations:["DAP","DOP"] },
   { id:"insp", label:"Inspección", family:"OIT", oit:"INSPECTION", notations:["DAP","DOP"] },
   { id:"tr", label:"Transporte", family:"OIT", oit:"TRANSPORT", notations:["DAP"] },
@@ -186,6 +213,7 @@ const paletteDefs: PaletteItem[] = [
 ];
 
 function allowedForNotation(item: PaletteItem, notation: NotationType) {
+  if (item.family === "AUX") return item.notations.includes(notation);
   if (notation === "DAP") return item.family === "OIT"; // DAP completo OIT
   if (notation === "DOP") return item.family === "OIT" && (item.oit === "OPERATION" || item.oit === "INSPECTION" || item.oit === "COMBINED");
   if (notation === "BPMN") return item.family === "BPMN";
@@ -197,6 +225,18 @@ function addNodeFromPalette(item: PaletteItem, worldX: number, worldY: number) {
   const snap = (v:number)=>Math.round(v/20)*20;
   let x = snap(worldX), y = snap(worldY);
 
+  if (item.family === "AUX" && item.aux) {
+    snapshot();
+    const edge = item.aux === "JUNCTION" ? hitTestEdge(doc.diagram, worldX, worldY, 8 / camera.scale) : null;
+    const node = edge ? joinEdgeAt(doc.diagram, edge, worldX, worldY) : createAuxNode(item.aux, x, y);
+    if (node) {
+      if (!edge) doc.diagram.nodes.push(node);
+      selectedNodeId = node.id; selectedEdgeId = null;
+    }
+    requestDraw();
+    return;
+  }
+
   // BPMN rule: lanes must be inside a pool (auto-grow)
   if (doc.metadata.notation === "BPMN" && item.family === "BPMN" && item.bpmn === "LANE") {
     const pools = doc.diagram.nodes.filter(n => n.kind.type === "BPMN" && n.kind.value === "POOL");
@@ -204,7 +244,11 @@ function addNodeFromPalette(item: PaletteItem, worldX: number, worldY: number) {
     let pool = pools.find(p => { const pw=p.size?.width??600, ph=p.size?.height??220; return Math.abs(x-p.position.x)<=pw/2 && Math.abs(y-p.position.y)<=ph/2; }) || pools[0];
     snapshot();
     // create inside pool content area; layoutPoolLanes will size/stack
-    const node = createBpmnNode("LANE", pool.position.x + 15, pool.position.y, next());
+    const node = createBpmnNode("LANE", pool.position.x + (pool.orientation === "VERTICAL" ? 0 : 15), pool.position.y + (pool.orientation === "VERTICAL" ? 15 : 0), next());
+    if (pool.orientation === "VERTICAL") {
+      node.orientation = "VERTICAL";
+      node.size = { width: 120, height: (pool.size?.height ?? 600) - 30 };
+    }
     doc.diagram.nodes.push(node); selectedNodeId = node.id; selectedEdgeId = null;
     layoutPoolLanes(pool.id);
     requestDraw();
@@ -215,6 +259,9 @@ function addNodeFromPalette(item: PaletteItem, worldX: number, worldY: number) {
   const node = item.family === "OIT" && item.oit
     ? createOitNode(item.oit, snap(worldX), snap(worldY), next())
     : createBpmnNode(item.bpmn!, snap(worldX), snap(worldY), next());
+  if (doc.metadata.notation === "DOP" && node.kind.type === "OIT") {
+    node.activity_number = nextActivityNumber(doc.diagram.nodes, node.kind.value);
+  }
   if ((doc.metadata.notation === "DAP" || doc.metadata.notation === "DOP") && node.metrics.time_seconds == null) {
     node.metrics.time_seconds = 20; node.metrics.time_value = 20; node.metrics.time_unit = "SECONDS";
   }
@@ -241,23 +288,15 @@ function addNodeFromPalette(item: PaletteItem, worldX: number, worldY: number) {
 
 function drawPaletteIcon(ic: CanvasRenderingContext2D, item: PaletteItem) {
   const color = paletteColor(item);
-  ic.clearRect(0,0,48,36); ic.save(); ic.translate(24,18); ic.scale(0.7,0.7); ic.strokeStyle=color; ic.fillStyle=color + "22"; ic.lineWidth=2;
-  if (item.family==="OIT" && item.oit) {
+  ic.clearRect(0,0,64,44);
+  if (item.bpmn) { drawBpmnPaletteIcon(ic, item.bpmn, color); return; }
+  ic.save(); ic.translate(32,22); ic.scale(0.7,0.7); ic.strokeStyle=color; ic.fillStyle=color + "22"; ic.lineWidth=2;
+  if (item.family === "AUX") {
+    if (item.aux === "TEXT") { ic.fillStyle = color; ic.font = "bold 25px sans-serif"; ic.textAlign = "center"; ic.fillText("T", 0, 8); }
+    else { ic.beginPath(); ic.moveTo(-20,0); ic.lineTo(20,0); ic.moveTo(0,-16); ic.lineTo(0,0); ic.stroke(); ic.beginPath(); ic.arc(0,0,4,0,Math.PI*2); ic.fillStyle=color; ic.fill(); }
+  } else if (item.family==="OIT" && item.oit) {
     const {w,h}=oitNodeSize(item.oit);
     switch(item.oit){case "OPERATION": ic.beginPath(); ic.arc(0,0,w/2,0,Math.PI*2); ic.fill(); ic.stroke(); break; case "INSPECTION": ic.beginPath(); ic.rect(-w/2,-h/2,w,h); ic.fill(); ic.stroke(); break; case "DELAY": ic.beginPath(); ic.moveTo(-w/2,-h/2); ic.lineTo(-w/2,h/2); ic.arc(-w/2,0,h/2,Math.PI/2,-Math.PI/2,true); ic.closePath(); ic.fill(); ic.stroke(); break; case "STORAGE": ic.beginPath(); ic.moveTo(0,h/2); ic.lineTo(-w/2,-h/2); ic.lineTo(w/2,-h/2); ic.closePath(); ic.fill(); ic.stroke(); break; case "COMBINED": ic.beginPath(); ic.rect(-w/2,-h/2,w,h); ic.fill(); ic.stroke(); ic.beginPath(); ic.arc(0,0,w/2-2,0,Math.PI*2); ic.stroke(); break; case "TRANSPORT": ic.beginPath(); ic.moveTo(-w/2,-h/2); ic.lineTo(w/2-10,-h/2); ic.lineTo(w/2,0); ic.lineTo(w/2-10,h/2); ic.lineTo(-w/2,h/2); ic.closePath(); ic.fill(); ic.stroke(); break;}
-  } else if (item.bpmn) {
-    const sz = bpmnNodeSize(item.bpmn);
-    const w = (item.bpmn === "POOL" || item.bpmn === "LANE") ? 40 : (item.bpmn === "TEXT_ANNOTATION" ? 38 : sz.w);
-    const h = (item.bpmn === "POOL" || item.bpmn === "LANE") ? 26 : (item.bpmn === "TEXT_ANNOTATION" ? 24 : sz.h);
-    switch(item.bpmn){
-      case "TASK": case "USER_TASK": case "SERVICE_TASK": {const r=8; ic.beginPath(); ic.moveTo(-w/2+r,-h/2); ic.lineTo(w/2-r,-h/2); ic.quadraticCurveTo(w/2,-h/2,w/2,-h/2+r); ic.lineTo(w/2,h/2-r); ic.quadraticCurveTo(w/2,h/2,w/2-r,h/2); ic.lineTo(-w/2+r,h/2); ic.quadraticCurveTo(-w/2,h/2,-w/2,h/2-r); ic.lineTo(-w/2,-h/2+r); ic.quadraticCurveTo(-w/2,-h/2,-w/2+r,-h/2); ic.closePath(); ic.fill(); ic.stroke(); break;}
-      case "START_EVENT": case "INTERMEDIATE_EVENT": ic.beginPath(); ic.arc(0,0,sz.w/2,0,Math.PI*2); ic.fill(); ic.stroke(); if(item.bpmn==="INTERMEDIATE_EVENT"){ic.beginPath(); ic.arc(0,0,sz.w/2-4,0,Math.PI*2); ic.stroke();} break;
-      case "END_EVENT": ic.beginPath(); ic.arc(0,0,sz.w/2,0,Math.PI*2); ic.fill(); ic.stroke(); ic.beginPath(); ic.arc(0,0,sz.w/2-4,0,Math.PI*2); ic.stroke(); break;
-      case "EXCLUSIVE_GATEWAY": case "PARALLEL_GATEWAY": case "INCLUSIVE_GATEWAY": ic.beginPath(); ic.moveTo(0,-sz.h/2); ic.lineTo(sz.w/2,0); ic.lineTo(0,sz.h/2); ic.lineTo(-sz.w/2,0); ic.closePath(); ic.fill(); ic.stroke(); ic.lineWidth=2; if(item.bpmn==="EXCLUSIVE_GATEWAY"){ic.beginPath();ic.moveTo(-6,-6);ic.lineTo(6,6);ic.moveTo(6,-6);ic.lineTo(-6,6);ic.stroke();} else if(item.bpmn==="PARALLEL_GATEWAY"){ic.beginPath();ic.moveTo(0,-8);ic.lineTo(0,8);ic.moveTo(-8,0);ic.lineTo(8,0);ic.stroke();} else {ic.beginPath(); ic.arc(0,0,6,0,Math.PI*2); ic.stroke();} break;
-      case "TEXT_ANNOTATION": ic.beginPath(); ic.moveTo(-w/2,-h/2); ic.lineTo(-w/2+10,-h/2); ic.moveTo(-w/2,-h/2); ic.lineTo(-w/2,h/2); ic.moveTo(-w/2,h/2); ic.lineTo(-w/2+10,h/2); ic.stroke(); break;
-      case "DATA_OBJECT": ic.beginPath(); ic.moveTo(-10,-14); ic.lineTo(4,-14); ic.lineTo(10,-8); ic.lineTo(10,14); ic.lineTo(-10,14); ic.closePath(); ic.fill(); ic.stroke(); break;
-      case "POOL": case "LANE": ic.beginPath(); ic.rect(-w/2,-h/2,w,h); ic.fill(); ic.stroke(); ic.beginPath(); ic.rect(-w/2,-h/2,8,h); ic.fillStyle=color+"55"; ic.fill(); ic.stroke(); break;
-    }
   }
   ic.restore();
 }
@@ -270,30 +309,18 @@ function lanesInPool(poolId: string) {
   return doc.diagram.nodes.filter(n => n.kind.type==='BPMN' && n.kind.value==='LANE').filter(n => {
     const cx = n.position.x, cy = n.position.y;
     return cx >= px1 && cx <= px2 && cy >= py1-1 && cy <= py2+1;
-  }).sort((a,b)=>a.position.y - b.position.y);
+  }).sort((a,b)=>pool.orientation === "VERTICAL" ? a.position.x - b.position.x : a.position.y - b.position.y);
 }
 function layoutPoolLanes(poolId: string) {
   const pool = doc.diagram.nodes.find(n => n.id === poolId);
   if (!pool || pool.kind.type!=='BPMN' || pool.kind.value!=='POOL') return;
   const lanes = lanesInPool(poolId);
   if (!lanes.length) return;
-  const pw = pool.size?.width ?? 600;
-  const poolHeader = 30; // pool name band on the left
-  let y = (pool.position.y - (pool.size?.height ?? 220)/2);
-  for (const lane of lanes) {
-    const lh = Math.max(80, lane.size?.height ?? 120);
-    // lanes occupy pool content area to the right of pool header
-    lane.size = { width: Math.max(200, pw - poolHeader), height: lh };
-    lane.position.x = pool.position.x + poolHeader/2;
-    lane.position.y = y + lh/2;
-    y += lh;
-  }
-  const neededH = Math.max(220, (y - (pool.position.y - (pool.size?.height ?? 220)/2)));
-  pool.size = { width: pw, height: neededH };
-  // re-stack lanes within resized pool
-  const top = pool.position.y - neededH/2;
-  let yy = top;
-  for (const lane of lanes) { const lh = lane.size?.height ?? 120; lane.position.y = yy + lh/2; yy += lh; }
+  const vertical = pool.orientation === "VERTICAL";
+  const extent = lanes.reduce((sum, lane) => sum + Math.max(80, vertical ? lane.size?.width ?? 120 : lane.size?.height ?? 120), 0);
+  const width = vertical ? Math.max(pool.size?.width ?? 220, extent) : pool.size?.width ?? 600;
+  const height = vertical ? pool.size?.height ?? 600 : Math.max(pool.size?.height ?? 220, extent);
+  resizePool(pool, lanes, width, height);
 }
 
 function renderPalette() {
@@ -306,6 +333,8 @@ function renderPalette() {
 
   // connector types inside diagram elements panel
   const csec = document.createElement("details"); csec.className = "pal-section"; csec.open = true;
+  csec.open = paletteSections.get(`${doc.metadata.notation}:Conectores`) ?? true;
+  csec.addEventListener("toggle", () => paletteSections.set(`${doc.metadata.notation}:Conectores`, csec.open));
   csec.innerHTML = `<summary><span>Conectores</span><span>☰</span></summary>`;
   const cpick = document.createElement("div"); cpick.className = "conn-pick";
   const connOpts: Array<{k:typeof currentEdgeKind,l:string,cls:string,show:boolean}> = [
@@ -322,25 +351,42 @@ function renderPalette() {
 
   const groups = new Map<string, PaletteItem[]>();
   for (const def of allowedDefs) {
-    const g = def.family === "OIT" ? "Símbolos OIT / ASME" : "Elementos BPMN";
+    const g = def.family === "OIT" ? "Símbolos OIT / ASME" : def.family === "AUX" ? "Texto y uniones"
+      : ["TASK", "USER_TASK", "SERVICE_TASK"].includes(def.bpmn!) ? "Actividades"
+      : ["START_EVENT", "INTERMEDIATE_EVENT", "END_EVENT"].includes(def.bpmn!) ? "Eventos"
+      : ["EXCLUSIVE_GATEWAY", "PARALLEL_GATEWAY", "INCLUSIVE_GATEWAY"].includes(def.bpmn!) ? "Compuertas"
+      : ["POOL", "LANE"].includes(def.bpmn!) ? "Contenedores" : "Datos y anotaciones";
     if (!groups.has(g)) groups.set(g, []); groups.get(g)!.push(def);
   }
   for (const [gname, items] of groups) {
     const section = document.createElement("details"); section.className = "pal-section"; section.open = true;
+    const sectionKey = `${doc.metadata.notation}:${gname}`;
+    section.open = paletteSections.get(sectionKey) ?? true;
+    section.addEventListener("toggle", () => paletteSections.set(sectionKey, section.open));
     const sum = document.createElement("summary"); sum.innerHTML = `<span>${gname}</span><span>☰</span>`;
     const grid = document.createElement("div"); grid.className = "pal-grid";
     for (const def of items) {
       const item = document.createElement("div"); item.className = "palette-item"; item.draggable = true;
       item.style.borderColor = paletteColor(def);
-      const icon = document.createElement("canvas"); icon.width=48; icon.height=36; const ictx=icon.getContext("2d"); if (ictx) drawPaletteIcon(ictx, def);
+      item.title = `${def.label}: arrastra al lienzo o pulsa Enter para agregar`;
+      item.setAttribute("role", "button"); item.tabIndex = 0;
+      item.setAttribute("aria-label", `Agregar ${def.label}`);
+      const icon = document.createElement("canvas");
+      const dpr = window.devicePixelRatio || 1;
+      icon.width = Math.round(64 * dpr); icon.height = Math.round(44 * dpr);
+      icon.setAttribute("aria-hidden", "true");
+      const ictx = icon.getContext("2d");
+      if (ictx) { ictx.setTransform(dpr, 0, 0, dpr, 0, 0); drawPaletteIcon(ictx, def); }
       const label = document.createElement("span"); label.textContent = def.label; item.appendChild(icon); item.appendChild(label);
       item.addEventListener("dragstart", ev => ev.dataTransfer?.setData("application/x-palette-id", def.id));
-      item.addEventListener("dblclick", () => { const c=canvas!.parentElement!; const p=camera.screenToWorld(c.clientWidth/2,c.clientHeight/2); addNodeFromPalette(def,p.x,p.y); });
+      const addAtCenter = () => { const c=canvas!.parentElement!; const p=camera.screenToWorld(c.clientWidth/2,c.clientHeight/2); addNodeFromPalette(def,p.x,p.y); };
+      item.addEventListener("dblclick", addAtCenter);
+      item.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); addAtCenter(); } });
       grid.appendChild(item);
     }
     section.appendChild(sum); section.appendChild(grid); paletteItemsEl.appendChild(section);
   }
-  if (paletteLegend) paletteLegend.textContent = `Notación ${doc.metadata.notation}: arrastra elementos; conecta desde puertos o manejador interno.`;
+  if (paletteLegend) paletteLegend.textContent = doc.metadata.notation === "DOP" ? "Edita el número en Propiedades. Para unir líneas, suelta un conector o un punto de unión sobre otra línea." : `Notación ${doc.metadata.notation}: arrastra elementos; conecta desde puertos o manejador interno.`;
 }
 canvas.addEventListener("dragover", e => e.preventDefault());
 canvas.addEventListener("drop", e => { e.preventDefault(); const id=e.dataTransfer?.getData("application/x-palette-id"); const def=paletteDefs.find(d=>d.id===id); if(!def || !allowedForNotation(def, doc.metadata.notation)) { requestDraw("Elemento no permitido en esta notación"); return; } const rect=canvas.getBoundingClientRect(); const w=camera.screenToWorld(e.clientX-rect.left,e.clientY-rect.top); addNodeFromPalette(def,w.x,w.y); });
@@ -363,11 +409,22 @@ async function doOpen(){ const res=await openDocument(); if(res.doc?.diagram){ s
 async function doImportBpmn(){ const res=await importBpmnFromFilePicker(); if(res.doc?.diagram){ snapshot(); doc=res.doc; selectedNodeId=null; selectedEdgeId=null; pendingPort=null; counter=1; } requestDraw(res.message); }
 function doExportCsv(){ downloadCsv(`${(doc.metadata.name||"proceso").replace(/[^a-z0-9-_]+/gi,"_")}_dap.csv`, diagramToCsv(doc.diagram)); requestDraw("CSV exportado"); }
 function doExportXls(){ downloadExcel(`${(doc.metadata.name||"proceso").replace(/[^a-z0-9-_]+/gi,"_")}_ficha_dap.xls`, documentToDapExcelXml(doc)); requestDraw("Excel exportado"); }
+async function doExportPdf() {
+  if (!doc.diagram.nodes.length) { requestDraw("Agrega elementos antes de exportar el PDF"); return; }
+  try { await downloadDiagramPdf(doc); requestDraw("PDF exportado"); }
+  catch (error) { requestDraw(`No se pudo exportar el PDF: ${error instanceof Error ? error.message : String(error)}`); }
+}
 function doExportBpmn(){ downloadBpmn(`${(doc.metadata.name||"proceso").replace(/[^a-z0-9-_]+/gi,"_")}.bpmn`, documentToBpmnXml(doc)); requestDraw("BPMN exportado"); }
 
 document.getElementById("btn-new")?.addEventListener("click",()=>showStartModal(true));
 document.getElementById("btn-open")?.addEventListener("click",doOpen);
 document.getElementById("btn-save")?.addEventListener("click",doSave);
+function toggleProperties(open: boolean) {
+  document.querySelector(".workspace-area")?.classList.toggle("panel-visible", open);
+  document.getElementById("btn-properties")?.setAttribute("aria-expanded", String(open));
+}
+document.getElementById("btn-properties")?.addEventListener("click", () => toggleProperties(!document.querySelector(".workspace-area")?.classList.contains("panel-visible")));
+document.getElementById("panel-close")?.addEventListener("click", () => toggleProperties(false));
 // connect via drag from ports (preferred); toolbar provides connector type selection
 
 // analysis export
@@ -380,13 +437,39 @@ window.addEventListener('click',closeMenus);
 const bind = (id:string, fn:()=>void)=>document.getElementById(id)?.addEventListener('click',()=>{ closeMenus(); fn(); });
 bind('m-new',()=>showStartModal(true)); bind('m-template-dap',()=>newDiagram('DAP_TEMPLATE')); bind('m-open',doOpen); bind('m-save',doSave); bind('m-import-bpmn',doImportBpmn);
 bind('m-undo',undo); bind('m-redo',redo); bind('m-delete',deleteSelection);
-bind('m-center',()=>{ camera.x=60; camera.y=60; camera.scale=1; requestDraw(); });
-bind('m-export-csv',doExportCsv); bind('m-export-xls',doExportXls); bind('m-export-bpmn',doExportBpmn);
+function fitDiagram() {
+  finishLabelEdit(true);
+  const viewport = canvas!.parentElement!;
+  if (!doc.diagram.nodes.length) { camera.x = viewport.clientWidth / 2; camera.y = viewport.clientHeight / 2; camera.scale = 1; requestDraw(); return; }
+  ctx.save();
+  const bounds = diagramBounds(doc.diagram, (text, fontSize = 12) => { ctx.font = `${fontSize}px Inter, system-ui, sans-serif`; return ctx.measureText(text).width; });
+  ctx.restore();
+  camera.fitBounds(bounds, viewport.clientWidth, viewport.clientHeight);
+  requestDraw();
+}
+function zoomCanvas(factor: number, reset = false) {
+  const p = canvas!.parentElement!;
+  camera.setScaleAt(p.clientWidth / 2, p.clientHeight / 2, reset ? 1 : camera.scale * factor);
+  requestDraw();
+}
+bind('m-center', fitDiagram);
+bind('zoom-fit', fitDiagram); bind('zoom-in', () => zoomCanvas(1.2)); bind('zoom-out', () => zoomCanvas(1 / 1.2)); bind('zoom-reset', () => zoomCanvas(1, true));
+bind('m-export-pdf',doExportPdf); bind('m-export-csv',doExportCsv); bind('m-export-xls',doExportXls); bind('m-export-bpmn',doExportBpmn);
 
 window.addEventListener("keydown", (e) => {
+  const target = e.target as HTMLElement;
+  if (target?.closest("input, textarea, select, [contenteditable=true]")) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); finishLabelEdit(true); doSave(); }
+    return;
+  }
   if (e.code === "Space") spaceDown = true; if (e.key === "Escape") setConnectMode(false);
   const mod=e.ctrlKey||e.metaKey; if(mod && e.key.toLowerCase()==='z' && !e.shiftKey){e.preventDefault();undo();return;} if(mod && (e.key.toLowerCase()==='y' || (e.key.toLowerCase()==='z' && e.shiftKey))){e.preventDefault();redo();return;} if(mod && e.key.toLowerCase()==='s'){e.preventDefault();doSave();}
   if (e.key === "Delete" || e.key === "Backspace") { const tag=(e.target as HTMLElement)?.tagName; if(tag!=="INPUT"&&tag!=="TEXTAREA"&&tag!=="SELECT") deleteSelection(); }
+});
+window.addEventListener("blur", () => {
+  spaceDown = false; panning = false; draggingNode = false; dragSnapshotTaken = false;
+  resizingNodeId = null; draggingPoolLanes = []; connectingDrag = null; pendingPort = null;
+  canvas!.style.cursor = "default"; requestDraw();
 });
 window.addEventListener("keyup", e=>{ if(e.code==="Space") spaceDown=false; });
 
@@ -406,6 +489,43 @@ function findPortAtWorld(wx:number,wy:number){
   return null;
 }
 function nearestPortAtNode(nodeId:string, wx:number, wy:number){ const n=doc.diagram.nodes.find(x=>x.id===nodeId); if(!n) return null; const p=nearestPort(n,wx,wy); return p?{nodeId, portId:p.id, isHandle:false}:null; }
+function positionLabelEditor() {
+  if (!editingNodeId || !inlineEditorWrap) return;
+  const node = doc.diagram.nodes.find(n => n.id === editingNodeId);
+  if (!node) { finishLabelEdit(false); return; }
+  const parent = canvas!.parentElement!, point = camera.worldToScreen(node.position.x, node.position.y);
+  const width = Math.max(80, Math.min(320, Math.max(180, getNodeSize(node).w * camera.scale), parent.clientWidth - 24));
+  inlineEditorWrap.style.width = `${width}px`;
+  inlineEditorWrap.style.left = `${Math.max(8, Math.min(parent.clientWidth - width - 8, point.x - width / 2))}px`;
+  inlineEditorWrap.style.top = `${Math.max(8, Math.min(parent.clientHeight - 130, point.y - 45))}px`;
+}
+function finishLabelEdit(commit: boolean) {
+  if (!editingNodeId || !inlineEditor) return;
+  const node = doc.diagram.nodes.find(n => n.id === editingNodeId);
+  editingNodeId = null;
+  inlineEditorWrap?.classList.add("hidden");
+  if (commit && node && node.label !== inlineEditor.value) { snapshot(); node.label = inlineEditor.value; }
+  requestDraw();
+}
+inlineEditor?.addEventListener("blur", () => finishLabelEdit(true));
+inlineEditor?.addEventListener("keydown", e => {
+  e.stopPropagation();
+  if (e.key === "Escape") { e.preventDefault(); finishLabelEdit(false); canvas!.focus(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); finishLabelEdit(true); canvas!.focus(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); finishLabelEdit(true); doSave(); }
+});
+canvas.addEventListener("dblclick", e => {
+  const rect = canvas!.getBoundingClientRect();
+  const point = camera.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+  const node = hitTestNode(doc.diagram, point.x, point.y) ?? hitTestNodeLabel(doc.diagram, point.x, point.y);
+  if (!node || (node.kind.type === "AUX" && node.kind.value === "JUNCTION") || !inlineEditor) return;
+  selectedNodeId = node.id; selectedEdgeId = null;
+  draggingNode = false; connectingDrag = null; pendingPort = null;
+  editingNodeId = node.id; inlineEditor.value = node.label;
+  inlineEditorWrap?.classList.remove("hidden");
+  inlineEditor.setAttribute("aria-label", `Editar nombre de ${node.label || "elemento"}`);
+  positionLabelEditor(); inlineEditor.focus(); inlineEditor.select(); requestDraw();
+});
 canvas.addEventListener("wheel", e=>{ e.preventDefault(); const r=canvas.getBoundingClientRect(); camera.zoomAt(e.clientX-r.left,e.clientY-r.top,e.deltaY); requestDraw(); }, {passive:false});
 canvas.addEventListener("mousedown", e=>{
   const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; last={x:e.clientX,y:e.clientY};
@@ -449,8 +569,44 @@ window.addEventListener("mousemove", e=>{
   const nh=findPortAtWorld(w.x,w.y); const hc=(nh?.nodeId!==hoverPort?.nodeId||nh?.portId!==hoverPort?.portId); hoverPort=nh;
   if(panning){ camera.pan(e.clientX-last.x,e.clientY-last.y); last={x:e.clientX,y:e.clientY}; requestDraw(); return; }
   if(connectingDrag){ requestDraw(); return; }
-  if(resizingNodeId){ const node=doc.diagram.nodes.find(n=>n.id===resizingNodeId); if(node){ const sz=node.size || {width: node.kind.type==='BPMN'&&node.kind.value==='POOL'?600:560, height: node.kind.type==='BPMN'&&node.kind.value==='POOL'?220:120}; sz.width=Math.max(300, sz.width + (e.clientX-last.x)/camera.scale); sz.height=Math.max(120, sz.height + (e.clientY-last.y)/camera.scale); node.size=sz; if(node.kind.type==='BPMN' && node.kind.value==='POOL') layoutPoolLanes(node.id); last={x:e.clientX,y:e.clientY}; requestDraw(); } return; }
-  if(draggingNode && selectedNodeId){ const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(node){ if(!dragSnapshotTaken){snapshot(); dragSnapshotTaken=true;} const dx=(e.clientX-last.x)/camera.scale, dy=(e.clientY-last.y)/camera.scale; node.position.x+=dx; node.position.y+=dy; if (draggingPoolLanes.length) { for (const lid of draggingPoolLanes) { const ln = doc.diagram.nodes.find(n=>n.id===lid); if (ln) { ln.position.x += dx; ln.position.y += dy; } } } last={x:e.clientX,y:e.clientY}; requestDraw(); } return; }
+  if (resizingNodeId) {
+    const node = doc.diagram.nodes.find(n => n.id === resizingNodeId);
+    if (node) {
+      const size = getNodeSize(node);
+      const width = size.w + (e.clientX - last.x) / camera.scale;
+      const height = size.h + (e.clientY - last.y) / camera.scale;
+      if (node.kind.type === "BPMN" && node.kind.value === "POOL") {
+        // Capture membership before changing bounds, including when shrinking.
+        resizePool(node, lanesInPool(node.id), width, height);
+      } else {
+        const w = Math.max(300, width), h = Math.max(120, height);
+        node.position.x += (w - size.w) / 2;
+        node.position.y += (h - size.h) / 2;
+        node.size = { width: w, height: h };
+      }
+      last = { x: e.clientX, y: e.clientY };
+      requestDraw();
+    }
+    return;
+  }
+  if (draggingNode && selectedNodeId) {
+    const dxScreen = e.clientX - last.x, dyScreen = e.clientY - last.y;
+    // A click (including tiny hand movements) must not move or snap a node.
+    if (!dragSnapshotTaken && Math.hypot(dxScreen, dyScreen) < 3) return;
+    const node = doc.diagram.nodes.find(n => n.id === selectedNodeId);
+    if (node) {
+      if (!dragSnapshotTaken) { snapshot(); dragSnapshotTaken = true; }
+      const dx = dxScreen / camera.scale, dy = dyScreen / camera.scale;
+      node.position.x += dx; node.position.y += dy;
+      for (const id of draggingPoolLanes) {
+        const lane = doc.diagram.nodes.find(n => n.id === id);
+        if (lane) { lane.position.x += dx; lane.position.y += dy; }
+      }
+      last = { x: e.clientX, y: e.clientY };
+      requestDraw();
+    }
+    return;
+  }
   if(hc) requestDraw();
 });
 window.addEventListener("mouseup", e=>{
@@ -461,14 +617,24 @@ window.addEventListener("mouseup", e=>{
       const tn = hitTestNode(doc.diagram,w.x,w.y);
       if(tn && tn.id !== connectingDrag.nodeId) target = nearestPortAtNode(tn.id, w.x, w.y);
     }
+    let joined = false;
+    if (!target && doc.metadata.notation === "DOP") {
+      const hit = hitTestEdge(doc.diagram, w.x, w.y, 8 / camera.scale);
+      // Joining a source to its own connector would create a redundant cycle.
+      if (hit && hit.source.node_id !== connectingDrag.nodeId && hit.target.node_id !== connectingDrag.nodeId) {
+        snapshot(); joined = true;
+        const junction = joinEdgeAt(doc.diagram, hit, w.x, w.y);
+        if (junction) target = nearestPortAtNode(junction.id, w.x, w.y);
+      }
+    }
     if(target && (target.nodeId!==connectingDrag.nodeId || target.portId!==connectingDrag.portId)){
-      snapshot();
+      if (!joined) snapshot();
       const edge:DiagramEdge={id:crypto.randomUUID(),source:{node_id:connectingDrag.nodeId,port_id:connectingDrag.portId},target:{node_id:target.nodeId,port_id:target.portId},label:null,kind:currentEdgeKind};
       doc.diagram.edges.push(edge); selectedEdgeId=edge.id; selectedNodeId=null;
     }
     connectingDrag=null; mouseWorld=null; if(!connectMode) pendingPort=null;
   }
-  if(draggingNode && selectedNodeId){
+  if(draggingNode && dragSnapshotTaken && selectedNodeId){
     const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId);
     if(node){
       const sx=Math.round(node.position.x/20)*20, sy=Math.round(node.position.y/20)*20;
@@ -479,13 +645,26 @@ window.addEventListener("mouseup", e=>{
       }
     }
   }
-  if(resizingNodeId){ const node=doc.diagram.nodes.find(n=>n.id===resizingNodeId); if(node && node.size){ node.size.width=Math.round(node.size.width/20)*20; node.size.height=Math.round(node.size.height/20)*20; if(node.kind.type==='BPMN' && node.kind.value==='POOL') layoutPoolLanes(node.id); } }
+  if (resizingNodeId) {
+    const node = doc.diagram.nodes.find(n => n.id === resizingNodeId);
+    if (node?.size) {
+      const width = Math.round(node.size.width / 20) * 20;
+      const height = Math.round(node.size.height / 20) * 20;
+      if (node.kind.type === "BPMN" && node.kind.value === "POOL") resizePool(node, lanesInPool(node.id), width, height);
+      else {
+        node.position.x += (width - node.size.width) / 2;
+        node.position.y += (height - node.size.height) / 2;
+        node.size = { width, height };
+      }
+    }
+  }
   draggingPoolLanes = [];
   panning=false; draggingNode=false; dragSnapshotTaken=false; resizingNodeId=null; canvas.style.cursor="default"; requestDraw();
 });
 
 function isCompatibleWithNotation(notation: NotationType): boolean {
   return doc.diagram.nodes.every(n => {
+    if (n.kind.type === "AUX") return notation === "DOP";
     if (notation === "BPMN") return n.kind.type === "BPMN";
     if (notation === "DAP") return n.kind.type === "OIT";
     if (notation === "DOP") return n.kind.type === "OIT" && (n.kind.value === "OPERATION" || n.kind.value === "INSPECTION" || n.kind.value === "COMBINED");
@@ -495,7 +674,9 @@ function isCompatibleWithNotation(notation: NotationType): boolean {
 
 function bindPropInputs(){
   let propTimer:any=null; const onChange=()=>{ if(!selectedNodeId) return; const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(!node) return; if(!propTimer) snapshot(); clearTimeout(propTimer); propTimer=setTimeout(()=>{propTimer=null;},500);
-    if(propLabel) node.label=propLabel.value; if(propResource) node.resource=propResource.value||null;
+    if (node.kind.type === "AUX" && node.kind.value === "TEXT") { if (propText) node.label = propText.value; }
+    else if (propLabel) node.label = propLabel.value;
+    if (propNumber && node.kind.type === "OIT" && doc.metadata.notation === "DOP") node.activity_number = propNumber.value.trim() || null; if(propResource) node.resource=propResource.value||null;
     if(propTime || propTimeUnit){
       node.metrics.time_value = propTime && propTime.value!=="" ? Number(propTime.value) : null;
       node.metrics.time_unit = (propTimeUnit?.value as TimeUnit) || "SECONDS";
@@ -504,7 +685,7 @@ function bindPropInputs(){
     if(propDist) node.metrics.distance_meters = propDist.value===""?null:Number(propDist.value);
     requestDraw();
   };
-  [propLabel,propResource,propTime,propDist,propTimeUnit].forEach(el=>{ el?.addEventListener("input",onChange as any); el?.addEventListener("change",()=>{propTimer=null; onChange();}); });
+  [propLabel,propText,propNumber,propResource,propTime,propDist,propTimeUnit].forEach(el=>{ el?.addEventListener("input",onChange as any); el?.addEventListener("change",()=>{propTimer=null; onChange();}); });
   const onProj=()=>{ 
     snapshot();
     if (projName) doc.metadata.name = projName.value||"Nuevo proceso";
@@ -516,6 +697,21 @@ function bindPropInputs(){
   };
   [projName,projAnalyst].forEach(el=>el?.addEventListener("change",onProj)); [projNotation,projMethod].forEach(el=>el?.addEventListener("change",onProj));
 }
+orientationSelect?.addEventListener("change", () => {
+  const pool = doc.diagram.nodes.find(n => n.id === selectedNodeId);
+  if (!pool || pool.kind.type !== "BPMN" || pool.kind.value !== "POOL") return;
+  const size = getNodeSize(pool);
+  const contents = doc.diagram.nodes.filter(n => n.id !== pool.id && Math.abs(n.position.x - pool.position.x) <= size.w/2 && Math.abs(n.position.y - pool.position.y) <= size.h/2);
+  snapshot();
+  setPoolOrientation(pool, contents, orientationSelect.value === "VERTICAL" ? "VERTICAL" : "HORIZONTAL");
+  const ids = new Set(contents.map(n => n.id));
+  const transposePort = (id: string) => ({ n: "w", w: "n", s: "e", e: "s" }[id] ?? id);
+  for (const edge of doc.diagram.edges) {
+    if (ids.has(edge.source.node_id)) edge.source.port_id = transposePort(edge.source.port_id);
+    if (ids.has(edge.target.node_id)) edge.target.port_id = transposePort(edge.target.port_id);
+  }
+  requestDraw();
+});
 bindPropInputs(); window.addEventListener("resize",resize); camera.x=60; camera.y=60; showStartModal(true); resize();
 // keep canvas bitmap matched to CSS size (prevents distortion)
 if (canvas?.parentElement && "ResizeObserver" in window) {

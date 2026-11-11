@@ -28,10 +28,10 @@ export function validateDiagram(diagram: Diagram, notation: NotationType): Valid
     if (tp && tp.size && !tp.has(e.target.port_id)) issues.push({ code: "INVALID_TARGET_PORT", message: "Puerto destino inválido", edge_id: e.id, node_id: e.target.node_id });
     adj.get(e.source.node_id)!.push(e.target.node_id);
   }
-  if (diagram.nodes.length > 1) {
+  if (diagram.nodes.filter(n => !(n.kind.type === "AUX" && n.kind.value === "TEXT")).length > 1) {
     const connected = new Set<string>();
     for (const e of diagram.edges) { connected.add(e.source.node_id); connected.add(e.target.node_id); }
-    for (const n of diagram.nodes) if (!connected.has(n.id)) issues.push({ code: "ORPHAN_NODE", message: `Nodo huérfano: ${n.label}`, node_id: n.id });
+    for (const n of diagram.nodes) if (!(n.kind.type === "AUX" && n.kind.value === "TEXT") && !connected.has(n.id)) issues.push({ code: "ORPHAN_NODE", message: `Nodo huérfano: ${n.label}`, node_id: n.id });
   }
   // cycle detection
   const color = new Map<string, number>(); // 0 unvisited,1 visiting,2 done

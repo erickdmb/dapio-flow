@@ -26,11 +26,12 @@ let selectedEdgeId: string | null = null;
 let counter = 1;
 
 let connectMode = false; // legacy toggle, default off (drag-to-connect preferred)
-let currentEdgeKind: "SEQUENCE_FLOW" | "ASSOCIATION" = "SEQUENCE_FLOW";
+let currentEdgeKind: "SEQUENCE_FLOW" | "ASSOCIATION" | "MESSAGE_FLOW" = "SEQUENCE_FLOW";
 let pendingPort: { nodeId: string; portId: string } | null = null;
 let hoverPort: { nodeId: string; portId: string } | null = null;
 
 let spaceDown = false, panning = false, draggingNode = false, dragSnapshotTaken = false;
+let resizingNodeId: string | null = null;
 let connectingDrag: { nodeId: string; portId: string } | null = null;
 let mouseWorld: {x:number;y:number} | null = null;
 let last = { x: 0, y: 0 };
@@ -285,6 +286,7 @@ bind('m-undo',undo); bind('m-redo',redo); bind('m-delete',deleteSelection);
 bind('m-center',()=>{ camera.x=60; camera.y=60; camera.scale=1; requestDraw(); }); 
 bind('m-conn-seq',()=>{ currentEdgeKind='SEQUENCE_FLOW'; if(edgeKindSel) edgeKindSel.value='SEQUENCE_FLOW'; requestDraw('Conector: Secuencia'); });
 bind('m-conn-assoc',()=>{ currentEdgeKind='ASSOCIATION'; if(edgeKindSel) edgeKindSel.value='ASSOCIATION'; requestDraw('Conector: Asociación'); });
+bind('m-conn-msg',()=>{ currentEdgeKind='MESSAGE_FLOW'; if(edgeKindSel) edgeKindSel.value='MESSAGE_FLOW'; requestDraw('Conector: Mensaje'); });
 bind('m-export-csv',doExportCsv); bind('m-export-xls',doExportXls); bind('m-export-bpmn',doExportBpmn);
 
 window.addEventListener("keydown", (e) => {
@@ -335,6 +337,18 @@ canvas.addEventListener("mousedown", e=>{
 
   if(connectMode){ pendingPort = null; requestDraw(); return; }
 
+  // resize handle for selected container
+  if (selectedNodeId) {
+    const sn = doc.diagram.nodes.find(n=>n.id===selectedNodeId);
+    if (sn && sn.kind.type==='BPMN' && (sn.kind.value==='POOL'||sn.kind.value==='LANE')) {
+      const sz = (sn.size?.width ? {w:sn.size.width,h:sn.size.height} : (sn.kind.value==='POOL'?{w:600,h:220}:{w:560,h:120}));
+      const hx = sn.position.x + sz.w/2, hy = sn.position.y + sz.h/2;
+      if (Math.abs(w.x - hx) <= 8/camera.scale && Math.abs(w.y - hy) <= 8/camera.scale) {
+        resizingNodeId = sn.id; snapshot(); requestDraw(); return;
+      }
+    }
+  }
+
   const node=hitTestNode(doc.diagram,w.x,w.y);
   if(node){ selectedNodeId=node.id; selectedEdgeId=null; draggingNode=true; dragSnapshotTaken=false; doc.diagram.nodes=doc.diagram.nodes.filter(n=>n.id!==node.id).concat(node); }
   else { const edge=hitTestEdge(doc.diagram,w.x,w.y); if(edge){selectedEdgeId=edge.id; selectedNodeId=null;} else {selectedNodeId=null; selectedEdgeId=null;} }
@@ -346,6 +360,7 @@ window.addEventListener("mousemove", e=>{
   const nh=findPortAtWorld(w.x,w.y); const hc=(nh?.nodeId!==hoverPort?.nodeId||nh?.portId!==hoverPort?.portId); hoverPort=nh;
   if(panning){ camera.pan(e.clientX-last.x,e.clientY-last.y); last={x:e.clientX,y:e.clientY}; requestDraw(); return; }
   if(connectingDrag){ requestDraw(); return; }
+  if(resizingNodeId){ const node=doc.diagram.nodes.find(n=>n.id===resizingNodeId); if(node){ const sz=node.size || {width: node.kind.type==='BPMN'&&node.kind.value==='POOL'?600:560, height: node.kind.type==='BPMN'&&node.kind.value==='POOL'?220:120}; sz.width=Math.max(200, sz.width + (e.clientX-last.x)/camera.scale); sz.height=Math.max(80, sz.height + (e.clientY-last.y)/camera.scale); node.size=sz; last={x:e.clientX,y:e.clientY}; requestDraw(); } return; }
   if(draggingNode && selectedNodeId){ const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(node){ if(!dragSnapshotTaken){snapshot(); dragSnapshotTaken=true;} node.position.x+=(e.clientX-last.x)/camera.scale; node.position.y+=(e.clientY-last.y)/camera.scale; last={x:e.clientX,y:e.clientY}; requestDraw(); } return; }
   if(hc) requestDraw();
 });
@@ -365,7 +380,8 @@ window.addEventListener("mouseup", e=>{
     connectingDrag=null; mouseWorld=null; if(!connectMode) pendingPort=null;
   }
   if(draggingNode && selectedNodeId){ const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(node){ node.position.x=Math.round(node.position.x/20)*20; node.position.y=Math.round(node.position.y/20)*20; } }
-  panning=false; draggingNode=false; dragSnapshotTaken=false; canvas.style.cursor="default"; requestDraw();
+  if(resizingNodeId){ const node=doc.diagram.nodes.find(n=>n.id===resizingNodeId); if(node && node.size){ node.size.width=Math.round(node.size.width/20)*20; node.size.height=Math.round(node.size.height/20)*20; } }
+  panning=false; draggingNode=false; dragSnapshotTaken=false; resizingNodeId=null; canvas.style.cursor="default"; requestDraw();
 });
 
 function isCompatibleWithNotation(notation: NotationType): boolean {

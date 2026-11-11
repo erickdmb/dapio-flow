@@ -163,6 +163,15 @@ function drawArrowHead(ctx: CanvasRenderingContext2D, from: {x:number;y:number},
   ctx.lineTo(to.x - size * Math.cos(ang + Math.PI / 7), to.y - size * Math.sin(ang + Math.PI / 7));
   ctx.closePath(); ctx.fill();
 }
+function drawOpenArrowHead(ctx: CanvasRenderingContext2D, from: {x:number;y:number}, to: {x:number;y:number}, size: number) {
+  const ang = Math.atan2(to.y - from.y, to.x - from.x);
+  ctx.beginPath();
+  ctx.moveTo(to.x - size * Math.cos(ang - Math.PI / 7), to.y - size * Math.sin(ang - Math.PI / 7));
+  ctx.lineTo(to.x, to.y);
+  ctx.lineTo(to.x - size * Math.cos(ang + Math.PI / 7), to.y - size * Math.sin(ang + Math.PI / 7));
+  ctx.stroke();
+  // small circle at source-like marker for message flow? keep simple open arrow
+}
 function inferPortFromPoint(p: {x:number;y:number}, from: {x:number;y:number}): string {
   const dx = p.x - from.x, dy = p.y - from.y;
   if (Math.abs(dx) > Math.abs(dy)) return dx >= 0 ? "e" : "w";
@@ -198,6 +207,12 @@ export function renderDiagram(
     ctx.save(); ctx.translate(s.x, s.y); ctx.scale(camera.scale, camera.scale);
     drawBpmn(ctx, node.kind.value, node.id === selectedNodeId, colors.fill, colors.stroke, {w:size.w,h:size.h,label:node.label});
     ctx.restore();
+    if (node.id === selectedNodeId) {
+      // resize handle
+      const hx = s.x + (size.w/2) * camera.scale;
+      const hy = s.y + (size.h/2) * camera.scale;
+      ctx.fillStyle = "#2563eb"; ctx.fillRect(hx-5, hy-5, 10, 10);
+    }
   }
 
   for (const edge of diagram.edges) {
@@ -207,13 +222,16 @@ export function renderDiagram(
     if (!a || !b) continue;
     const pts = orthogonalPath(a, b, edge.source.port_id, edge.target.port_id).map(p => camera.worldToScreen(p.x, p.y));
     ctx.save();
-    const color = edge.id === selectedEdgeId ? "#2563eb" : (edge.kind === "ASSOCIATION" ? "#6b7280" : "#64748b");
+    const color = edge.id === selectedEdgeId ? "#2563eb" : (edge.kind === "ASSOCIATION" ? "#6b7280" : edge.kind === "MESSAGE_FLOW" ? "#0f766e" : "#64748b");
     ctx.strokeStyle = color; ctx.fillStyle = color;
     ctx.lineWidth = edge.id === selectedEdgeId ? 2.5 : 1.5;
-    if (edge.kind === "ASSOCIATION") ctx.setLineDash([6,4]);
+    if (edge.kind === "ASSOCIATION" || edge.kind === "MESSAGE_FLOW") ctx.setLineDash([6,4]);
     drawRoundedPolyline(ctx, pts, 8); ctx.stroke();
     ctx.setLineDash([]);
-    if (edge.kind === "SEQUENCE_FLOW" && pts.length >= 2) drawArrowHead(ctx, pts[pts.length - 2], pts[pts.length - 1], 9);
+    if (pts.length >= 2) {
+      if (edge.kind === "SEQUENCE_FLOW") drawArrowHead(ctx, pts[pts.length - 2], pts[pts.length - 1], 9);
+      if (edge.kind === "MESSAGE_FLOW") drawOpenArrowHead(ctx, pts[pts.length - 2], pts[pts.length - 1], 9);
+    }
     ctx.restore();
   }
 
@@ -234,6 +252,7 @@ export function renderDiagram(
         ctx.save(); ctx.strokeStyle = "#2563eb"; ctx.fillStyle = "#2563eb"; ctx.lineWidth = 2; ctx.setLineDash([6,4]);
         drawRoundedPolyline(ctx, pts, 8); ctx.stroke();
         ctx.setLineDash([]);
+        // preview arrow generic
         if (hoverPort && hoverPort.nodeId !== pending.nodeId && pts.length >= 2) drawArrowHead(ctx, pts[pts.length - 2], pts[pts.length - 1], 8);
         ctx.restore();
       }

@@ -56,7 +56,7 @@ export interface DiagramNode {
 }
 
 export interface Endpoint { node_id: string; port_id: string }
-export type EdgeKind = "SEQUENCE_FLOW" | "ASSOCIATION";
+export type EdgeKind = "SEQUENCE_FLOW" | "ASSOCIATION" | "MESSAGE_FLOW";
 
 export interface DiagramEdge {
   id: string;

@@ -169,6 +169,7 @@ pub struct Endpoint {
 pub enum EdgeKind {
     SequenceFlow,
     Association,
+    MessageFlow,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -10,6 +10,7 @@ html, body, #app { height: 100%; margin: 0; }
 .toolbar .tools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .toolbar button { padding: 4px 8px; font-size: 12px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer; }
 .toolbar button:hover { background: #eef4ff; border-color: #9db7e5; }
+.toolbar button.active { background: #2563eb; color: #fff; border-color: #1d4ed8; }
 .sep { width: 1px; height: 20px; background: #ddd; display: inline-block; margin: 0 4px; }
 .statusbar { border-top: 1px solid #ddd; border-bottom: none; font-size: 12px; color: #333; }
 .subtitle { margin-left: 8px; color: #666; font-weight: 500; }

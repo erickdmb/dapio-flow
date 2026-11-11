@@ -284,13 +284,14 @@ export function renderDiagram(
     // ports/connectors + internal handle (inside element) for easier connection
     if (node.ports && node.ports.length) {
       const selected = node.id === selectedNodeId;
-      const centerS = camera.worldToScreen(node.position.x, node.position.y);
-      const showCenter = connectMode || pending || selected || hoverPort?.nodeId === node.id;
-      if (showCenter) {
-        ctx.beginPath(); ctx.arc(centerS.x, centerS.y, 5, 0, Math.PI * 2);
+      const showPorts = connectMode || pending || selected || hoverPort?.nodeId === node.id;
+      // small internal connector handle offset (does not block moving from center)
+      const hx = camera.worldToScreen(node.position.x + Math.min(10, size.w/4), node.position.y - Math.min(10, size.h/4));
+      if (showPorts) {
+        ctx.beginPath(); ctx.arc(hx.x, hx.y, 5, 0, Math.PI * 2);
         ctx.fillStyle = pending?.nodeId === node.id ? "#2563eb" : "#ffffff";
         ctx.strokeStyle = colors.stroke; ctx.lineWidth = 1.5; ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(centerS.x - 3, centerS.y); ctx.lineTo(centerS.x + 3, centerS.y); ctx.moveTo(centerS.x, centerS.y - 3); ctx.lineTo(centerS.x, centerS.y + 3);
+        ctx.beginPath(); ctx.moveTo(hx.x - 3, hx.y); ctx.lineTo(hx.x + 3, hx.y); ctx.moveTo(hx.x, hx.y - 3); ctx.lineTo(hx.x, hx.y + 3);
         ctx.strokeStyle = pending?.nodeId === node.id ? "#fff" : colors.stroke; ctx.stroke();
       }
       for (const p of node.ports) {

@@ -36,8 +36,7 @@ let connectingDrag: { nodeId: string; portId: string } | null = null;
 let mouseWorld: {x:number;y:number} | null = null;
 let last = { x: 0, y: 0 };
 
-const connectBtn = null as HTMLButtonElement | null; // replaced by connector type selector
-const edgeKindSel = document.getElementById("edge-kind") as HTMLSelectElement | null;
+const edgeKindSel = null as HTMLSelectElement | null; // moved into palette
 const paletteItemsEl = document.getElementById("palette-items");
 const paletteLegend = document.getElementById("palette-legend");
 const startModal = document.getElementById("start-modal");
@@ -145,7 +144,7 @@ function draw(extra?: string) {
 }
 
 function setConnectMode(on: boolean) { connectMode = on; pendingPort = null; requestDraw(); }
-edgeKindSel?.addEventListener("change", ()=>{ currentEdgeKind = (edgeKindSel.value as any) || "SEQUENCE_FLOW"; requestDraw(); });
+// connector type selected from palette section
 function next() { return counter++; }
 
 type PaletteItem = { id: string; label: string; family: "OIT"|"BPMN"; oit?: OitKind; bpmn?: BpmnElementType; notations: NotationType[]; };
@@ -218,18 +217,34 @@ function drawPaletteIcon(ic: CanvasRenderingContext2D, item: PaletteItem) {
 function renderPalette() {
   if (!paletteItemsEl) return;
   const allowedDefs = paletteDefs.filter(d => allowedForNotation(d, doc.metadata.notation));
-  const key = doc.metadata.notation + ":" + allowedDefs.map(d=>d.id).join(",");
+  const key = doc.metadata.notation + ":" + allowedDefs.map(d=>d.id).join(",") + ":" + currentEdgeKind;
   if (key === paletteKey) return;
   paletteKey = key;
   paletteItemsEl.innerHTML = "";
+
+  // connector types inside diagram elements panel
+  const csec = document.createElement("details"); csec.className = "pal-section"; csec.open = true;
+  csec.innerHTML = `<summary><span>Conectores</span><span>☰</span></summary>`;
+  const cpick = document.createElement("div"); cpick.className = "conn-pick";
+  const connOpts: Array<{k:typeof currentEdgeKind,l:string,cls:string,show:boolean}> = [
+    {k:"SEQUENCE_FLOW", l:"Secuencia", cls:"", show:true},
+    {k:"ASSOCIATION", l:"Asociación", cls:"assoc", show:true},
+    {k:"MESSAGE_FLOW", l:"Mensaje (BPMN)", cls:"msg", show: doc.metadata.notation === "BPMN"},
+  ];
+  for (const o of connOpts.filter(x=>x.show)) {
+    const b = document.createElement("button"); b.className = "conn-opt" + (currentEdgeKind===o.k?" active":""); b.innerHTML = `<span class="conn-swatch ${o.cls}"></span>${o.l}`;
+    b.onclick = () => { currentEdgeKind = o.k; paletteKey = ""; requestDraw(`Conector: ${o.l}`); };
+    cpick.appendChild(b);
+  }
+  csec.appendChild(cpick); paletteItemsEl.appendChild(csec);
+
   const groups = new Map<string, PaletteItem[]>();
   for (const def of allowedDefs) {
     const g = def.family === "OIT" ? "Símbolos OIT / ASME" : "Elementos BPMN";
     if (!groups.has(g)) groups.set(g, []); groups.get(g)!.push(def);
   }
-  let first = true;
   for (const [gname, items] of groups) {
-    const section = document.createElement("details"); section.className = "pal-section"; if (first) section.open = true; first = false;
+    const section = document.createElement("details"); section.className = "pal-section"; section.open = true;
     const sum = document.createElement("summary"); sum.innerHTML = `<span>${gname}</span><span>☰</span>`;
     const grid = document.createElement("div"); grid.className = "pal-grid";
     for (const def of items) {
@@ -243,7 +258,7 @@ function renderPalette() {
     }
     section.appendChild(sum); section.appendChild(grid); paletteItemsEl.appendChild(section);
   }
-  if (paletteLegend) paletteLegend.textContent = `Notación ${doc.metadata.notation}: elementos compatibles (no mezclables). Conecta arrastrando desde los puertos del nodo.`;
+  if (paletteLegend) paletteLegend.textContent = `Notación ${doc.metadata.notation}: arrastra elementos; conecta desde puertos o manejador interno.`;
 }
 canvas.addEventListener("dragover", e => e.preventDefault());
 canvas.addEventListener("drop", e => { e.preventDefault(); const id=e.dataTransfer?.getData("application/x-palette-id"); const def=paletteDefs.find(d=>d.id===id); if(!def || !allowedForNotation(def, doc.metadata.notation)) { requestDraw("Elemento no permitido en esta notación"); return; } const rect=canvas.getBoundingClientRect(); const w=camera.screenToWorld(e.clientX-rect.left,e.clientY-rect.top); addNodeFromPalette(def,w.x,w.y); });
@@ -283,10 +298,7 @@ window.addEventListener('click',closeMenus);
 const bind = (id:string, fn:()=>void)=>document.getElementById(id)?.addEventListener('click',()=>{ closeMenus(); fn(); });
 bind('m-new',()=>showStartModal(true)); bind('m-template-dap',()=>newDiagram('DAP_TEMPLATE')); bind('m-open',doOpen); bind('m-save',doSave); bind('m-import-bpmn',doImportBpmn);
 bind('m-undo',undo); bind('m-redo',redo); bind('m-delete',deleteSelection);
-bind('m-center',()=>{ camera.x=60; camera.y=60; camera.scale=1; requestDraw(); }); 
-bind('m-conn-seq',()=>{ currentEdgeKind='SEQUENCE_FLOW'; if(edgeKindSel) edgeKindSel.value='SEQUENCE_FLOW'; requestDraw('Conector: Secuencia'); });
-bind('m-conn-assoc',()=>{ currentEdgeKind='ASSOCIATION'; if(edgeKindSel) edgeKindSel.value='ASSOCIATION'; requestDraw('Conector: Asociación'); });
-bind('m-conn-msg',()=>{ currentEdgeKind='MESSAGE_FLOW'; if(edgeKindSel) edgeKindSel.value='MESSAGE_FLOW'; requestDraw('Conector: Mensaje'); });
+bind('m-center',()=>{ camera.x=60; camera.y=60; camera.scale=1; requestDraw(); });
 bind('m-export-csv',doExportCsv); bind('m-export-xls',doExportXls); bind('m-export-bpmn',doExportBpmn);
 
 window.addEventListener("keydown", (e) => {
@@ -297,14 +309,15 @@ window.addEventListener("keydown", (e) => {
 window.addEventListener("keyup", e=>{ if(e.code==="Space") spaceDown=false; });
 
 function findPortAtWorld(wx:number,wy:number){
-  // include internal center handle
+  // border ports and internal handle (offset) as explicit connector targets
   for(let i=doc.diagram.nodes.length-1;i>=0;i--){
     const n=doc.diagram.nodes[i];
     if (n.ports && n.ports.length) {
-      const d = Math.hypot(wx - n.position.x, wy - n.position.y);
-      if (d <= 8) { const p = nearestPort(n, wx, wy); if (p) return {nodeId:n.id, portId:p.id}; }
+      const sz = (n.size?.width ? {w:n.size.width,h:n.size.height} : (n.kind.type==='OIT'?oitNodeSize(n.kind.value):bpmnNodeSize(n.kind.value as any)));
+      const hx = n.position.x + Math.min(10, sz.w/4), hy = n.position.y - Math.min(10, sz.h/4);
+      if (Math.hypot(wx - hx, wy - hy) <= 6) { const p = nearestPort(n, wx, wy); if (p) return {nodeId:n.id, portId:p.id}; }
     }
-    const p=hitTestPort(n,wx,wy,11); if(p) return {nodeId:n.id,portId:p.id};
+    const p=hitTestPort(n,wx,wy,10); if(p) return {nodeId:n.id, portId:p.id};
   }
   return null;
 }
@@ -315,17 +328,8 @@ canvas.addEventListener("mousedown", e=>{
   if(e.button===1 || (e.button===0 && spaceDown)){ panning=true; canvas.style.cursor="grabbing"; return; }
   if(e.button!==0) return; const w=camera.screenToWorld(sx,sy);
 
-  // drag-to-connect from port or near edge (easier)
-  let port = findPortAtWorld(w.x,w.y);
-  if (!port) {
-    const n = hitTestNode(doc.diagram,w.x,w.y);
-    if (n && !connectMode && n.ports?.length) {
-      // if click near border, start connection for easier UX
-      const dx = Math.abs(w.x - n.position.x), dy = Math.abs(w.y - n.position.y);
-      const s = (n.size?.width ? {w:n.size.width,h:n.size.height} : (n.kind.type==='OIT'?oitNodeSize(n.kind.value):bpmnNodeSize(n.kind.value as any)));
-      if (dx > s.w*0.25 || dy > s.h*0.25) port = nearestPortAtNode(n.id, w.x, w.y);
-    }
-  }
+  // drag-to-connect from explicit port/internal handle (do not block element move)
+  const port = findPortAtWorld(w.x,w.y);
   if (port) {
     if (connectMode) {
       if(!pendingPort) pendingPort=port; else if(pendingPort.nodeId!==port.nodeId||pendingPort.portId!==port.portId){ snapshot(); const edge:DiagramEdge={id:crypto.randomUUID(),source:{node_id:pendingPort.nodeId,port_id:pendingPort.portId},target:{node_id:port.nodeId,port_id:port.portId},label:null,kind:currentEdgeKind}; doc.diagram.edges.push(edge); selectedEdgeId=edge.id; selectedNodeId=null; pendingPort=null; }
@@ -334,6 +338,8 @@ canvas.addEventListener("mousedown", e=>{
       connectingDrag = port; pendingPort = port; selectedNodeId = null; selectedEdgeId = null; canvas.style.cursor = "crosshair"; requestDraw(); return;
     }
   }
+
+  if(connectMode){ pendingPort = null; requestDraw(); return; }
 
   if(connectMode){ pendingPort = null; requestDraw(); return; }
 

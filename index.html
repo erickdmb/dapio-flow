@@ -38,9 +38,7 @@
             <button class="menu-btn" data-menu="m-ver">Ver</button>
             <div class="menu-dd" id="m-ver">
               <button id="m-center">Centrar vista</button>
-              <button id="m-conn-seq">Conector: Secuencia</button>
-              <button id="m-conn-assoc">Conector: Asociación</button>
-              <button id="m-conn-msg">Conector: Mensaje</button>
+              <span class="menu-info">Conectores: selecciona tipo en el panel de elementos</span>
             </div>
           </div>
           <div class="menu">
@@ -56,14 +54,6 @@
           <button id="btn-new" title="Nuevo">Nuevo</button>
           <button id="btn-open">Abrir</button>
           <button id="btn-save">Guardar</button>
-          <label class="conn-tool" title="Tipo de conector (arrastra desde puertos)">
-            <span>Conector:</span>
-            <select id="edge-kind">
-              <option value="SEQUENCE_FLOW">Secuencia</option>
-              <option value="ASSOCIATION">Asociación</option>
-              <option value="MESSAGE_FLOW">Mensaje (BPMN)</option>
-            </select>
-          </label>
           <input id="file-open" type="file" accept=".json,.bpmr.json" style="display:none" />
           <input id="file-import-bpmn" type="file" accept=".bpmn,.xml" style="display:none" />
         </div>

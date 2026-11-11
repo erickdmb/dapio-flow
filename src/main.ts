@@ -3,7 +3,8 @@ import { Camera } from "./canvas/camera";
 import { hitTestEdge, hitTestNode, hitTestPort, renderDiagram } from "./canvas/renderer";
 import { createEmptyDocument, createOitNode } from "./model/defaults";
 import { calculateDapSummary } from "./model/summary";
-import type { DiagramEdge, OitKind } from "./model/types";
+import type { DiagramEdge, OitKind, ProjectDocument } from "./model/types";
+import { openDocument, saveDocument } from "./persistence";
 
 const canvas = document.getElementById("diagram-canvas") as HTMLCanvasElement | null;
 const statusbar = document.getElementById("statusbar");
@@ -12,7 +13,7 @@ const ctx = canvas.getContext("2d");
 if (!ctx) throw new Error("Contexto 2D no disponible");
 
 const camera = new Camera();
-const doc = createEmptyDocument();
+let doc: ProjectDocument = createEmptyDocument();
 let selectedNodeId: string | null = null;
 let selectedEdgeId: string | null = null;
 let oitCounter = 1;
@@ -37,19 +38,20 @@ function resize() {
   draw();
 }
 
-function updateStatus() {
+function updateStatus(extra?: string) {
   const s = calculateDapSummary(doc.diagram);
   const sel = selectedNodeId ? " · Nodo seleccionado" : selectedEdgeId ? " · Conector seleccionado" : "";
   const mode = connectMode ? (pendingPort ? " · Conectar: elige puerto destino" : " · Conectar: elige puerto origen") : "";
+  const msg = extra ? ` · ${extra}` : "";
   if (statusbar) {
-    statusbar.textContent = `Nodos: ${doc.diagram.nodes.length} | Aristas: ${doc.diagram.edges.length} | Op:${s.operations} Tr:${s.transports} Insp:${s.inspections} Dem:${s.delays} Alm:${s.storages} | Tiempo: ${s.total_time_seconds}s | Dist: ${s.total_distance_meters}m${sel}${mode}`;
+    statusbar.textContent = `${doc.metadata.name} | Nodos: ${doc.diagram.nodes.length} | Aristas: ${doc.diagram.edges.length} | Op:${s.operations} Tr:${s.transports} Insp:${s.inspections} Dem:${s.delays} Alm:${s.storages} | Tiempo: ${s.total_time_seconds}s | Dist: ${s.total_distance_meters}m${sel}${mode}${msg}`;
   }
 }
 
-function draw() {
+function draw(extra?: string) {
   const parent = canvas.parentElement!;
   renderDiagram(ctx, parent.clientWidth, parent.clientHeight, camera, doc.diagram, selectedNodeId, selectedEdgeId, pendingPort, hoverPort);
-  updateStatus();
+  updateStatus(extra);
 }
 
 function setConnectMode(on: boolean) {
@@ -59,11 +61,17 @@ function setConnectMode(on: boolean) {
   draw();
 }
 
+function nextCounter() {
+  const n = doc.diagram.nodes.length + oitCounter;
+  oitCounter += 1;
+  return n;
+}
+
 function addOit(kind: OitKind) {
   const parent = canvas.parentElement!;
   const center = camera.screenToWorld(parent.clientWidth / 2, parent.clientHeight / 2);
   const snap = (v: number) => Math.round(v / 20) * 20;
-  const node = createOitNode(kind, snap(center.x), snap(center.y), oitCounter++);
+  const node = createOitNode(kind, snap(center.x), snap(center.y), nextCounter());
   doc.diagram.nodes.push(node);
   selectedNodeId = node.id; selectedEdgeId = null;
   draw();
@@ -88,9 +96,26 @@ connectBtn?.addEventListener("click", () => setConnectMode(!connectMode));
 document.getElementById("btn-delete")?.addEventListener("click", deleteSelection);
 document.getElementById("btn-reset-view")?.addEventListener("click", () => { camera.x = 40; camera.y = 40; camera.scale = 1; draw(); });
 
+document.getElementById("btn-save")?.addEventListener("click", async () => {
+  const msg = await saveDocument(doc);
+  draw(msg);
+});
+document.getElementById("btn-open")?.addEventListener("click", async () => {
+  const res = await openDocument();
+  if (res.doc && res.doc.diagram) {
+    doc = res.doc;
+    selectedNodeId = null; selectedEdgeId = null; pendingPort = null; oitCounter = 1;
+  }
+  draw(res.message);
+});
+
 window.addEventListener("keydown", (e) => {
   if (e.code === "Space") spaceDown = true;
   if (e.key === "Escape") setConnectMode(false);
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    saveDocument(doc).then((msg) => draw(msg));
+  }
   if ((e.key === "Delete" || e.key === "Backspace")) {
     const tag = (e.target as HTMLElement)?.tagName;
     if (tag !== "INPUT" && tag !== "TEXTAREA") deleteSelection();
@@ -142,9 +167,6 @@ canvas.addEventListener("mousedown", (e) => {
       draw(); return;
     }
 
-    const hitPort = findPortAtWorld(w.x, w.y);
-    if (hitPort) { // start quick connect by grabbing port without mode? keep simple: prefer node/edge
-    }
     const node = hitTestNode(doc.diagram, w.x, w.y);
     if (node) {
       selectedNodeId = node.id; selectedEdgeId = null; draggingNode = true;
@@ -161,7 +183,7 @@ canvas.addEventListener("mousedown", (e) => {
 window.addEventListener("mousemove", (e) => {
   const rect = canvas.getBoundingClientRect();
   const w = camera.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-  hoverPort = (connectMode || panning === false) ? findPortAtWorld(w.x, w.y) : null;
+  hoverPort = findPortAtWorld(w.x, w.y);
   if (panning) {
     camera.pan(e.clientX - last.x, e.clientY - last.y);
     last = { x: e.clientX, y: e.clientY }; draw();

@@ -13,6 +13,9 @@
           <span class="subtitle">BPMN · DOP · DAP</span>
         </div>
         <div class="tools" id="tools">
+          <button id="btn-open">Abrir</button>
+          <button id="btn-save">Guardar JSON</button>
+          <span class="sep"></span>
           <button data-add="OPERATION">Operación</button>
           <button data-add="TRANSPORT">Transporte</button>
           <button data-add="INSPECTION">Inspección</button>
@@ -23,6 +26,7 @@
           <button id="btn-connect" title="Conectar nodos (clic en puerto origen y luego destino)">Conectar</button>
           <button id="btn-delete">Eliminar</button>
           <button id="btn-reset-view">Centrar</button>
+          <input id="file-open" type="file" accept=".json,.bpmr.json" style="display:none" />
         </div>
       </header>
       <main class="workspace">

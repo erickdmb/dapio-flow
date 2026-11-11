@@ -1,5 +1,5 @@
 import type { DiagramNode, ProjectDocument } from "../model/types";
-import { nodeSize } from "../canvas/renderer";
+import { getNodeSize } from "../canvas/renderer";
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -10,6 +10,12 @@ function bpmnElementForNode(n: DiagramNode): { tag: string; attrs: string; body?
   const name = esc(n.label || id);
   if (n.kind.type === "BPMN") {
     switch (n.kind.value) {
+      case "USER_TASK": return { tag: "bpmn:userTask", attrs: `id="${id}" name="${name}"` };
+      case "SERVICE_TASK": return { tag: "bpmn:serviceTask", attrs: `id="${id}" name="${name}"` };
+      case "INTERMEDIATE_EVENT": return { tag: "bpmn:intermediateCatchEvent", attrs: `id="${id}" name="${name}"` };
+      case "INCLUSIVE_GATEWAY": return { tag: "bpmn:inclusiveGateway", attrs: `id="${id}" name="${name}"` };
+      case "DATA_OBJECT": return { tag: "bpmn:dataObjectReference", attrs: `id="${id}" name="${name}"` };
+      case "TEXT_ANNOTATION": return { tag: "bpmn:textAnnotation", attrs: `id="${id}"`, body: `<bpmn:text>${name}</bpmn:text>` };
       case "START_EVENT": return { tag: "bpmn:startEvent", attrs: `id="${id}" name="${name}"` };
       case "END_EVENT": return { tag: "bpmn:endEvent", attrs: `id="${id}" name="${name}"` };
       case "EXCLUSIVE_GATEWAY": return { tag: "bpmn:exclusiveGateway", attrs: `id="${id}" name="${name}"` };
@@ -23,11 +29,8 @@ function bpmnElementForNode(n: DiagramNode): { tag: string; attrs: string; body?
 }
 
 function boundsForNode(n: DiagramNode) {
-  if (n.kind.type === "OIT") {
-    const { w, h } = nodeSize(n.kind.value);
-    return { x: n.position.x - w / 2, y: n.position.y - h / 2, w, h };
-  }
-  return { x: n.position.x - 30, y: n.position.y - 20, w: 60, h: 40 };
+  const { w, h } = getNodeSize(n);
+  return { x: n.position.x - w / 2, y: n.position.y - h / 2, w, h };
 }
 
 export function documentToBpmnXml(doc: ProjectDocument): string {
@@ -44,26 +47,48 @@ export function documentToBpmnXml(doc: ProjectDocument): string {
   const incoming = new Map<string, string[]>();
   const outgoing = new Map<string, string[]>();
   diagram.nodes.forEach(n => { incoming.set(n.id, []); outgoing.set(n.id, []); });
-  diagram.edges.forEach(e => {
+  diagram.edges.filter(e => e.kind === "SEQUENCE_FLOW").forEach(e => {
     const fid = flowIdMap.get(e.id)!;
     outgoing.get(e.source.node_id)?.push(fid);
     incoming.get(e.target.node_id)?.push(fid);
   });
 
-  const processNodes = diagram.nodes.map(n => {
+  const isKind = (n: DiagramNode, kind: string) => n.kind.type === "BPMN" && n.kind.value === kind;
+  const pools = diagram.nodes.filter(n => isKind(n, "POOL"));
+  const lanes = diagram.nodes.filter(n => isKind(n, "LANE"));
+  const contains = (container: DiagramNode, node: DiagramNode) => {
+    const b = boundsForNode(container);
+    return node.position.x >= b.x && node.position.x <= b.x + b.w && node.position.y >= b.y && node.position.y <= b.y + b.h;
+  };
+  const poolOf = (n: DiagramNode) => pools.find(p => p.id === n.id) || pools.find(p => contains(p, n));
+  const processId = (n: DiagramNode) => { const pool = poolOf(n); return pool ? `process_${nodeIdMap.get(pool.id)}` : procId; };
+  const renderNode = (n: DiagramNode) => {
     const el = bpmnElementForNode(n);
     const ins = (incoming.get(n.id) || []).map(f => `<bpmn:incoming>${f}</bpmn:incoming>`).join("");
     const outs = (outgoing.get(n.id) || []).map(f => `<bpmn:outgoing>${f}</bpmn:outgoing>`).join("");
-    const inner = ins + outs;
+    const inner = el.body || (isKind(n, "DATA_OBJECT") ? "" : ins + outs);
     return inner ? `<${el.tag} ${el.attrs}>${inner}</${el.tag}>` : `<${el.tag} ${el.attrs} />`;
-  }).join("\n      ");
+  };
 
-  const flows = diagram.edges.map(e => {
+  const renderFlow = (e: ProjectDocument["diagram"]["edges"][number]) => {
     const fid = flowIdMap.get(e.id)!;
     const src = nodeIdMap.get(e.source.node_id) || "";
     const tgt = nodeIdMap.get(e.target.node_id) || "";
-    return `<bpmn:sequenceFlow id="${fid}" sourceRef="${src}" targetRef="${tgt}" />`;
-  }).join("\n      ");
+    const tag = e.kind === "MESSAGE_FLOW" ? "messageFlow" : e.kind === "ASSOCIATION" ? "association" : "sequenceFlow";
+    return `<bpmn:${tag} id="${fid}" sourceRef="${src}" targetRef="${tgt}"${e.label ? ` name="${esc(e.label)}"` : ""} />`;
+  };
+  const flowNodes = diagram.nodes.filter(n => !isKind(n, "POOL") && !isKind(n, "LANE"));
+  const processes = [procId, ...pools.map(p => processId(p))].map(pid => {
+    const members = flowNodes.filter(n => processId(n) === pid);
+    const poolLanes = lanes.filter(n => processId(n) === pid);
+    const laneSet = poolLanes.length ? `<bpmn:laneSet id="lanes_${pid}">${poolLanes.map(l =>
+      `<bpmn:lane id="${nodeIdMap.get(l.id)}" name="${esc(l.label)}">${members.filter(n => !isKind(n, "TEXT_ANNOTATION") && !isKind(n, "DATA_OBJECT") && poolLanes.find(lane => contains(lane, n))?.id === l.id).map(n => `<bpmn:flowNodeRef>${nodeIdMap.get(n.id)}</bpmn:flowNodeRef>`).join("")}</bpmn:lane>`
+    ).join("")}</bpmn:laneSet>` : "";
+    const flows = diagram.edges.filter(e => e.kind !== "MESSAGE_FLOW" && members.some(n => n.id === e.source.node_id)).map(renderFlow).join("\n");
+    return `<bpmn:process id="${pid}" name="${esc(doc.metadata.name || "Proceso")}" isExecutable="false">${laneSet}${members.map(renderNode).join("\n")}${flows}</bpmn:process>`;
+  }).join("\n");
+  const collaboration = pools.length || diagram.edges.some(e => e.kind === "MESSAGE_FLOW")
+    ? `<bpmn:collaboration id="Collaboration_1">${pools.map(p => `<bpmn:participant id="${nodeIdMap.get(p.id)}" name="${esc(p.label)}" processRef="${processId(p)}" />`).join("")}${diagram.edges.filter(e => e.kind === "MESSAGE_FLOW").map(renderFlow).join("")}</bpmn:collaboration>` : "";
 
   const shapes = diagram.nodes.map(n => {
     const b = boundsForNode(n);
@@ -110,12 +135,10 @@ export function documentToBpmnXml(doc: ProjectDocument): string {
   xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
   xmlns:oit="http://bpm-rust/schema/oit"
   id="${defId}" targetNamespace="http://bpm-rust/schema/bpmn">
-  <bpmn:process id="${procId}" name="${esc(doc.metadata.name || "Proceso")}" isExecutable="false">
-      ${processNodes}
-      ${flows}
-  </bpmn:process>
+  ${processes}
+  ${collaboration}
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
-    <bpmndi:BPMNPlane id="${planeId}" bpmnElement="${procId}">
+    <bpmndi:BPMNPlane id="${planeId}" bpmnElement="${collaboration ? "Collaboration_1" : procId}">
       ${shapes}
       ${edgesXml}
     </bpmndi:BPMNPlane>

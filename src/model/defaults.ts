@@ -69,7 +69,6 @@ export function createOitNode(kind: OitKind, x: number, y: number, index: number
 }
 
 export function createBpmnNode(kind: BpmnElementType, x: number, y: number, index: number): DiagramNode {
-  const t = kind === "TASK" ? 20 : null;
   const isContainer = kind === "POOL" || kind === "LANE";
   const noPorts = isContainer || kind === "TEXT_ANNOTATION";
   return {
@@ -78,7 +77,7 @@ export function createBpmnNode(kind: BpmnElementType, x: number, y: number, inde
     label: `${bpmnLabel(kind)} ${index}`,
     position: { x, y },
     size: isContainer ? { width: kind === "POOL" ? 600 : 560, height: kind === "POOL" ? 220 : 120 } : (kind === "TEXT_ANNOTATION" ? { width: 140, height: 50 } : null),
-    metrics: { time_seconds: t, time_value: t, time_unit: "SECONDS", distance_meters: null, cost: null },
+    metrics: { time_seconds: null, time_value: null, time_unit: null, distance_meters: null, cost: null },
     resource: null,
     ports: noPorts ? [] : defaultPorts(),
   };

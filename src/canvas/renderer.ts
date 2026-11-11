@@ -122,11 +122,13 @@ function drawBpmn(ctx: CanvasRenderingContext2D, kind: BpmnElementType, selected
       ctx.strokeStyle = selected ? "#2563eb" : stroke;
       ctx.lineWidth = selected ? 2.5 : 1.5;
       ctx.beginPath(); ctx.rect(-w/2, -h/2, w, h); ctx.fill(); ctx.stroke();
-      const headerW = 28;
+      const headerW = 30;
       ctx.beginPath(); ctx.rect(-w/2, -h/2, headerW, h); ctx.fillStyle = kind === "POOL" ? "#e2e8f0" : "#f1f5f9"; ctx.fill(); ctx.stroke();
+      // separator between header and content
+      ctx.beginPath(); ctx.moveTo(-w/2 + headerW, -h/2); ctx.lineTo(-w/2 + headerW, h/2); ctx.stroke();
       ctx.save(); ctx.translate(-w/2 + headerW/2, 0); ctx.rotate(-Math.PI/2);
-      ctx.fillStyle = "#334155"; ctx.font = "12px Inter, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText((custom?.label || (kind === "POOL" ? "Pool" : "Carril")).slice(0, 30), 0, 0);
+      ctx.fillStyle = "#334155"; ctx.font = "600 12px Inter, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText((custom?.label || (kind === "POOL" ? "Pool" : "Carril")).slice(0, 40), 0, 0);
       ctx.restore();
       break;
     }
@@ -312,16 +314,21 @@ export function renderDiagram(
 }
 
 export function hitTestNode(diagram: Diagram, wx: number, wy: number): DiagramNode | null {
+  const isContainer = (n: DiagramNode) => n.kind.type === "BPMN" && (n.kind.value === "POOL" || n.kind.value === "LANE");
+  let fallback: DiagramNode | null = null;
   for (let i = diagram.nodes.length - 1; i >= 0; i--) {
     const n = diagram.nodes[i];
     const { w, h } = getNodeSize(n);
     const pad = 4;
     if (wx >= n.position.x - w / 2 - pad && wx <= n.position.x + w / 2 + pad &&
-        wy >= n.position.y - h / 2 - pad && wy <= n.position.y + h / 2 + pad) return n;
+        wy >= n.position.y - h / 2 - pad && wy <= n.position.y + h / 2 + pad) {
+      if (!isContainer(n)) return n;
+      if (!fallback) fallback = n;
+    }
   }
-  return null;
+  return fallback;
 }
-export function hitTestPort(node: DiagramNode, wx: number, wy: number, radius = 10): Port | null {
+export function hitTestPort(node: DiagramNode, wx: number, wy: number, radius = 6): Port | null {
   for (const p of node.ports) {
     const pw = portWorldPosition(node, p.id); if (!pw) continue;
     if (Math.hypot(wx - pw.x, wy - pw.y) <= radius) return p;

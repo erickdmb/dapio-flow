@@ -9,7 +9,9 @@ export function toSeconds(value: number | null | undefined, unit: TimeUnit | nul
 }
 
 export function syncTimeMetrics(metrics: Metrics): Metrics {
-  const secs = toSeconds(metrics.time_value ?? metrics.time_seconds ?? null, metrics.time_unit || "SECONDS");
+  const secs = metrics.time_value === undefined
+    ? metrics.time_seconds ?? null
+    : toSeconds(metrics.time_value, metrics.time_unit);
   return { ...metrics, time_seconds: secs };
 }
 

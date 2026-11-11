@@ -34,6 +34,7 @@ let spaceDown = false, panning = false, draggingNode = false, dragSnapshotTaken 
 let resizingNodeId: string | null = null;
 let connectingDrag: { nodeId: string; portId: string } | null = null;
 let mouseWorld: {x:number;y:number} | null = null;
+let draggingPoolLanes: string[] = [];
 let last = { x: 0, y: 0 };
 
 const edgeKindSel = null as HTMLSelectElement | null; // moved into palette
@@ -133,7 +134,15 @@ function syncPanel() {
   const s = calculateDapSummary(doc.diagram);
   if (summaryBox) summaryBox.innerHTML = `Op: <b>${s.operations}</b> · Tr: <b>${s.transports}</b> · Insp: <b>${s.inspections}</b><br/>Dem: <b>${s.delays}</b> · Alm: <b>${s.storages}</b><br/>Tiempo total: <b>${formatDuration(s.total_time_seconds)}</b> (${s.total_time_seconds}s)<br/>Distancia: <b>${s.total_distance_meters}m</b>`;
   const v = validateDiagram(doc.diagram, doc.metadata.notation);
-  if (validationBox) validationBox.innerHTML = v.ok ? `<div class="validation-ok">Sin incidencias (${doc.metadata.notation})</div>` : v.issues.map(i=>`<div class="validation-err">• [${i.code}] ${i.message}</div>`).join("");
+  if (validationBox) {
+    validationBox.replaceChildren();
+    for (const message of v.ok ? [`Sin incidencias (${doc.metadata.notation})`] : v.issues.map(i => `• [${i.code}] ${i.message}`)) {
+      const row = document.createElement("div");
+      row.className = v.ok ? "validation-ok" : "validation-err";
+      row.textContent = message;
+      validationBox.appendChild(row);
+    }
+  }
   renderAnalysis();
 }
 function updateStatus(extra?: string) {
@@ -194,7 +203,8 @@ function addNodeFromPalette(item: PaletteItem, worldX: number, worldY: number) {
     if (pools.length === 0) { requestDraw("Regla BPMN: primero agrega un Pool para colocar carriles dentro"); return; }
     let pool = pools.find(p => { const pw=p.size?.width??600, ph=p.size?.height??220; return Math.abs(x-p.position.x)<=pw/2 && Math.abs(y-p.position.y)<=ph/2; }) || pools[0];
     snapshot();
-    const node = createBpmnNode("LANE", pool.position.x, pool.position.y, next());
+    // create inside pool content area; layoutPoolLanes will size/stack
+    const node = createBpmnNode("LANE", pool.position.x + 15, pool.position.y, next());
     doc.diagram.nodes.push(node); selectedNodeId = node.id; selectedEdgeId = null;
     layoutPoolLanes(pool.id);
     requestDraw();
@@ -268,18 +278,19 @@ function layoutPoolLanes(poolId: string) {
   const lanes = lanesInPool(poolId);
   if (!lanes.length) return;
   const pw = pool.size?.width ?? 600;
-  const header = 0;
-  let y = (pool.position.y - (pool.size?.height ?? 220)/2) + header;
+  const poolHeader = 30; // pool name band on the left
+  let y = (pool.position.y - (pool.size?.height ?? 220)/2);
   for (const lane of lanes) {
-    const lh = Math.max(100, lane.size?.height ?? 120);
-    lane.size = { width: Math.max(200, pw - 40), height: lh };
-    lane.position.x = pool.position.x;
+    const lh = Math.max(80, lane.size?.height ?? 120);
+    // lanes occupy pool content area to the right of pool header
+    lane.size = { width: Math.max(200, pw - poolHeader), height: lh };
+    lane.position.x = pool.position.x + poolHeader/2;
     lane.position.y = y + lh/2;
     y += lh;
   }
-  const neededH = Math.max(220, (y - (pool.position.y - (pool.size?.height ?? 220)/2)) + 10);
+  const neededH = Math.max(220, (y - (pool.position.y - (pool.size?.height ?? 220)/2)));
   pool.size = { width: pw, height: neededH };
-  // re-center lanes vertically relative to new pool top
+  // re-stack lanes within resized pool
   const top = pool.position.y - neededH/2;
   let yy = top;
   for (const lane of lanes) { const lh = lane.size?.height ?? 120; lane.position.y = yy + lh/2; yy += lh; }
@@ -390,7 +401,7 @@ function findPortAtWorld(wx:number,wy:number){
       if (connectMode && Math.hypot(wx - hx, wy - hy) <= 7/camera.scale) { const p = nearestPort(n, wx, wy); if (p) return {nodeId:n.id, portId:p.id, isHandle:true}; }
     }
     // border ports: small target so node body remains draggable
-    const p=hitTestPort(n,wx,wy,7/camera.scale); if(p) return {nodeId:n.id, portId:p.id, isHandle:false};
+    const p=hitTestPort(n,wx,wy,4.5/camera.scale); if(p) return {nodeId:n.id, portId:p.id, isHandle:false};
   }
   return null;
 }
@@ -422,6 +433,7 @@ canvas.addEventListener("mousedown", e=>{
   }
 
   if (node) {
+    draggingPoolLanes = node.kind.type === "BPMN" && node.kind.value === "POOL" ? lanesInPool(node.id).map(n => n.id) : [];
     selectedNodeId = node.id; selectedEdgeId = null; draggingNode = true; dragSnapshotTaken = false;
     doc.diagram.nodes = doc.diagram.nodes.filter(n=>n.id!==node.id).concat(node);
   } else {
@@ -438,7 +450,7 @@ window.addEventListener("mousemove", e=>{
   if(panning){ camera.pan(e.clientX-last.x,e.clientY-last.y); last={x:e.clientX,y:e.clientY}; requestDraw(); return; }
   if(connectingDrag){ requestDraw(); return; }
   if(resizingNodeId){ const node=doc.diagram.nodes.find(n=>n.id===resizingNodeId); if(node){ const sz=node.size || {width: node.kind.type==='BPMN'&&node.kind.value==='POOL'?600:560, height: node.kind.type==='BPMN'&&node.kind.value==='POOL'?220:120}; sz.width=Math.max(300, sz.width + (e.clientX-last.x)/camera.scale); sz.height=Math.max(120, sz.height + (e.clientY-last.y)/camera.scale); node.size=sz; if(node.kind.type==='BPMN' && node.kind.value==='POOL') layoutPoolLanes(node.id); last={x:e.clientX,y:e.clientY}; requestDraw(); } return; }
-  if(draggingNode && selectedNodeId){ const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(node){ if(!dragSnapshotTaken){snapshot(); dragSnapshotTaken=true;} node.position.x+=(e.clientX-last.x)/camera.scale; node.position.y+=(e.clientY-last.y)/camera.scale; last={x:e.clientX,y:e.clientY}; requestDraw(); } return; }
+  if(draggingNode && selectedNodeId){ const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(node){ if(!dragSnapshotTaken){snapshot(); dragSnapshotTaken=true;} const dx=(e.clientX-last.x)/camera.scale, dy=(e.clientY-last.y)/camera.scale; node.position.x+=dx; node.position.y+=dy; if (draggingPoolLanes.length) { for (const lid of draggingPoolLanes) { const ln = doc.diagram.nodes.find(n=>n.id===lid); if (ln) { ln.position.x += dx; ln.position.y += dy; } } } last={x:e.clientX,y:e.clientY}; requestDraw(); } return; }
   if(hc) requestDraw();
 });
 window.addEventListener("mouseup", e=>{
@@ -456,25 +468,19 @@ window.addEventListener("mouseup", e=>{
     }
     connectingDrag=null; mouseWorld=null; if(!connectMode) pendingPort=null;
   }
-  if(draggingNode && selectedNodeId){ const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(node){ node.position.x=Math.round(node.position.x/20)*20; node.position.y=Math.round(node.position.y/20)*20; } }
-  if(resizingNodeId){ const node=doc.diagram.nodes.find(n=>n.id===resizingNodeId); if(node && node.size){ node.size.width=Math.round(node.size.width/20)*20; node.size.height=Math.round(node.size.height/20)*20; if(node.kind.type==='BPMN' && node.kind.value==='POOL') layoutPoolLanes(node.id); } }
-  // snap and keep lanes inside pools / auto-layout
-  if (selectedNodeId) {
-    const node = doc.diagram.nodes.find(n=>n.id===selectedNodeId);
-    if (node) {
-      if (draggingNode) { node.position.x = Math.round(node.position.x/20)*20; node.position.y = Math.round(node.position.y/20)*20; }
-      if (doc.metadata.notation==='BPMN' && node.kind.type==='BPMN' && node.kind.value==='LANE') {
-        const pools = doc.diagram.nodes.filter(n=>n.kind.type==='BPMN' && n.kind.value==='POOL');
-        if (pools.length) {
-          const pool = pools.find(p=>{ const pw=p.size?.width??600, ph=p.size?.height??220; return Math.abs(node.position.x-p.position.x)<=pw/2 && Math.abs(node.position.y-p.position.y)<=ph/2; }) || pools[0];
-          layoutPoolLanes(pool.id);
-        }
-      }
-      if (doc.metadata.notation==='BPMN' && node.kind.type==='BPMN' && node.kind.value==='POOL') {
-        layoutPoolLanes(node.id);
+  if(draggingNode && selectedNodeId){
+    const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId);
+    if(node){
+      const sx=Math.round(node.position.x/20)*20, sy=Math.round(node.position.y/20)*20;
+      const sdx=sx-node.position.x, sdy=sy-node.position.y;
+      node.position.x=sx; node.position.y=sy;
+      if (draggingPoolLanes.length) {
+        for (const lid of draggingPoolLanes) { const ln = doc.diagram.nodes.find(n=>n.id===lid); if (ln) { ln.position.x += sdx; ln.position.y += sdy; } }
       }
     }
   }
+  if(resizingNodeId){ const node=doc.diagram.nodes.find(n=>n.id===resizingNodeId); if(node && node.size){ node.size.width=Math.round(node.size.width/20)*20; node.size.height=Math.round(node.size.height/20)*20; if(node.kind.type==='BPMN' && node.kind.value==='POOL') layoutPoolLanes(node.id); } }
+  draggingPoolLanes = [];
   panning=false; draggingNode=false; dragSnapshotTaken=false; resizingNodeId=null; canvas.style.cursor="default"; requestDraw();
 });
 
@@ -511,3 +517,7 @@ function bindPropInputs(){
   [projName,projAnalyst].forEach(el=>el?.addEventListener("change",onProj)); [projNotation,projMethod].forEach(el=>el?.addEventListener("change",onProj));
 }
 bindPropInputs(); window.addEventListener("resize",resize); camera.x=60; camera.y=60; showStartModal(true); resize();
+// keep canvas bitmap matched to CSS size (prevents distortion)
+if (canvas?.parentElement && "ResizeObserver" in window) {
+  new ResizeObserver(() => resize()).observe(canvas.parentElement);
+}

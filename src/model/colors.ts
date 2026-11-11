@@ -12,11 +12,15 @@ export function nodeColors(node: DiagramNode): { fill: string; stroke: string } 
     }
   }
   switch (node.kind.value) {
-    case "TASK": return { fill: "#e0f2fe", stroke: "#0284c7" };
+    case "TASK": case "USER_TASK": case "SERVICE_TASK": return { fill: "#e0f2fe", stroke: "#0284c7" };
     case "START_EVENT": return { fill: "#dcfce7", stroke: "#16a34a" };
+    case "INTERMEDIATE_EVENT": return { fill: "#fff7ed", stroke: "#ea580c" };
     case "END_EVENT": return { fill: "#fee2e2", stroke: "#dc2626" };
     case "EXCLUSIVE_GATEWAY": return { fill: "#fef9c3", stroke: "#ca8a04" };
     case "PARALLEL_GATEWAY": return { fill: "#f3e8ff", stroke: "#9333ea" };
+    case "INCLUSIVE_GATEWAY": return { fill: "#ecfeff", stroke: "#0891b2" };
+    case "TEXT_ANNOTATION": return { fill: "#fffbeb", stroke: "#78716c" };
+    case "DATA_OBJECT": return { fill: "#f1f5f9", stroke: "#475569" };
     case "POOL": return { fill: "#f8fafc", stroke: "#475569" };
     case "LANE": return { fill: "#ffffff", stroke: "#64748b" };
   }
@@ -34,11 +38,15 @@ export function paletteColor(item: {family: string; oit?: string; bpmn?: string}
     }
   }
   switch (item.bpmn) {
-    case "TASK": return "#0284c7";
+    case "TASK": case "USER_TASK": case "SERVICE_TASK": return "#0284c7";
     case "START_EVENT": return "#16a34a";
+    case "INTERMEDIATE_EVENT": return "#ea580c";
     case "END_EVENT": return "#dc2626";
     case "EXCLUSIVE_GATEWAY": return "#ca8a04";
     case "PARALLEL_GATEWAY": return "#9333ea";
+    case "INCLUSIVE_GATEWAY": return "#0891b2";
+    case "TEXT_ANNOTATION": return "#78716c";
+    case "DATA_OBJECT": return "#475569";
     case "POOL": return "#475569";
     case "LANE": return "#64748b";
   }

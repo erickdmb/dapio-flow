@@ -110,10 +110,16 @@ pub enum OitKind {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum BpmnElementType {
     Task,
+    UserTask,
+    ServiceTask,
     StartEvent,
+    IntermediateEvent,
     EndEvent,
     ExclusiveGateway,
     ParallelGateway,
+    InclusiveGateway,
+    TextAnnotation,
+    DataObject,
     Pool,
     Lane,
 }

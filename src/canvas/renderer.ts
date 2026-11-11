@@ -14,11 +14,17 @@ export function oitNodeSize(kind: OitKind): { w: number; h: number } {
 }
 export function bpmnNodeSize(kind: BpmnElementType): { w: number; h: number } {
   switch (kind) {
-    case "TASK": return { w: 90, h: 50 };
-    case "START_EVENT": return { w: 36, h: 36 };
+    case "TASK":
+    case "USER_TASK":
+    case "SERVICE_TASK": return { w: 90, h: 50 };
+    case "START_EVENT":
+    case "INTERMEDIATE_EVENT":
     case "END_EVENT": return { w: 36, h: 36 };
-    case "EXCLUSIVE_GATEWAY": return { w: 44, h: 44 };
-    case "PARALLEL_GATEWAY": return { w: 44, h: 44 };
+    case "EXCLUSIVE_GATEWAY":
+    case "PARALLEL_GATEWAY":
+    case "INCLUSIVE_GATEWAY": return { w: 44, h: 44 };
+    case "TEXT_ANNOTATION": return { w: 140, h: 50 };
+    case "DATA_OBJECT": return { w: 34, h: 44 };
     case "POOL": return { w: 600, h: 220 };
     case "LANE": return { w: 560, h: 120 };
   }
@@ -70,7 +76,9 @@ function drawBpmn(ctx: CanvasRenderingContext2D, kind: BpmnElementType, selected
   ctx.strokeStyle = selected ? "#2563eb" : stroke;
   ctx.lineWidth = selected ? 2.5 : 2;
   switch (kind) {
-    case "TASK": {
+    case "TASK":
+    case "USER_TASK":
+    case "SERVICE_TASK": {
       const r = 8;
       ctx.beginPath();
       ctx.moveTo(-w/2+r, -h/2); ctx.lineTo(w/2-r, -h/2); ctx.quadraticCurveTo(w/2, -h/2, w/2, -h/2+r);
@@ -78,19 +86,35 @@ function drawBpmn(ctx: CanvasRenderingContext2D, kind: BpmnElementType, selected
       ctx.lineTo(-w/2+r, h/2); ctx.quadraticCurveTo(-w/2, h/2, -w/2, h/2-r);
       ctx.lineTo(-w/2, -h/2+r); ctx.quadraticCurveTo(-w/2, -h/2, -w/2+r, -h/2);
       ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = selected ? "#2563eb" : stroke; ctx.lineWidth = 1.5;
+      if (kind === "USER_TASK") { ctx.beginPath(); ctx.arc(-w/2+14, -h/2+12, 4, 0, Math.PI*2); ctx.stroke(); ctx.beginPath(); ctx.arc(-w/2+14, -h/2+22, 6, Math.PI, 0); ctx.stroke(); }
+      if (kind === "SERVICE_TASK") { ctx.beginPath(); for(let i=0;i<8;i++){const a=i*Math.PI/4; ctx.lineTo(-w/2+14+Math.cos(a)*5, -h/2+14+Math.sin(a)*5);} ctx.closePath(); ctx.stroke(); }
       break;
     }
     case "START_EVENT":
       ctx.beginPath(); ctx.arc(0,0,w/2,0,Math.PI*2); ctx.fill(); ctx.stroke(); break;
+    case "INTERMEDIATE_EVENT":
+      ctx.beginPath(); ctx.arc(0,0,w/2,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0,0,w/2-4,0,Math.PI*2); ctx.stroke(); break;
     case "END_EVENT":
       ctx.beginPath(); ctx.arc(0,0,w/2,0,Math.PI*2); ctx.fill(); ctx.stroke();
       ctx.beginPath(); ctx.arc(0,0,w/2-4,0,Math.PI*2); ctx.lineWidth = selected ? 2.5 : 3; ctx.stroke(); break;
     case "EXCLUSIVE_GATEWAY":
     case "PARALLEL_GATEWAY":
+    case "INCLUSIVE_GATEWAY":
       ctx.beginPath(); ctx.moveTo(0,-h/2); ctx.lineTo(w/2,0); ctx.lineTo(0,h/2); ctx.lineTo(-w/2,0); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.lineWidth = 2; ctx.strokeStyle = selected ? "#2563eb" : stroke;
       if (kind === "EXCLUSIVE_GATEWAY") { ctx.beginPath(); ctx.moveTo(-7,-7); ctx.lineTo(7,7); ctx.moveTo(7,-7); ctx.lineTo(-7,7); ctx.stroke(); }
-      else { ctx.beginPath(); ctx.moveTo(0,-9); ctx.lineTo(0,9); ctx.moveTo(-9,0); ctx.lineTo(9,0); ctx.stroke(); }
+      else if (kind === "PARALLEL_GATEWAY") { ctx.beginPath(); ctx.moveTo(0,-9); ctx.lineTo(0,9); ctx.moveTo(-9,0); ctx.lineTo(9,0); ctx.stroke(); }
+      else { ctx.beginPath(); ctx.arc(0,0,7,0,Math.PI*2); ctx.stroke(); }
+      break;
+    case "TEXT_ANNOTATION":
+      ctx.beginPath(); ctx.moveTo(-w/2, -h/2); ctx.lineTo(-w/2+18, -h/2); ctx.moveTo(-w/2, -h/2); ctx.lineTo(-w/2, h/2); ctx.moveTo(-w/2, h/2); ctx.lineTo(-w/2+18, h/2); ctx.stroke();
+      ctx.setLineDash([4,3]); ctx.beginPath(); ctx.moveTo(-w/2+18, 0); ctx.lineTo(w/2, 0); ctx.stroke(); ctx.setLineDash([]);
+      break;
+    case "DATA_OBJECT":
+      ctx.beginPath(); ctx.moveTo(-w/2, -h/2); ctx.lineTo(w/2-8, -h/2); ctx.lineTo(w/2, -h/2+8); ctx.lineTo(w/2, h/2); ctx.lineTo(-w/2, h/2); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(w/2-8,-h/2); ctx.lineTo(w/2-8,-h/2+8); ctx.lineTo(w/2,-h/2+8); ctx.stroke();
       break;
     case "POOL":
     case "LANE": {
@@ -98,7 +122,6 @@ function drawBpmn(ctx: CanvasRenderingContext2D, kind: BpmnElementType, selected
       ctx.strokeStyle = selected ? "#2563eb" : stroke;
       ctx.lineWidth = selected ? 2.5 : 1.5;
       ctx.beginPath(); ctx.rect(-w/2, -h/2, w, h); ctx.fill(); ctx.stroke();
-      // header band
       const headerW = 28;
       ctx.beginPath(); ctx.rect(-w/2, -h/2, headerW, h); ctx.fillStyle = kind === "POOL" ? "#e2e8f0" : "#f1f5f9"; ctx.fill(); ctx.stroke();
       ctx.save(); ctx.translate(-w/2 + headerW/2, 0); ctx.rotate(-Math.PI/2);
@@ -239,19 +262,30 @@ export function renderDiagram(
       ctx.fillText(`${val} ${ulabel}`, s.x, labelY + 13);
     }
 
-    // ports/connectors (inside/visible handles for easier connection)
-    for (const p of node.ports) {
-      const pw = portWorldPosition(node, p.id); if (!pw) continue;
-      const ps = camera.worldToScreen(pw.x, pw.y);
-      const isPending = pending?.nodeId === node.id && pending.portId === p.id;
-      const isHover = hoverPort?.nodeId === node.id && hoverPort.portId === p.id;
+    // ports/connectors + internal handle (inside element) for easier connection
+    if (node.ports && node.ports.length) {
       const selected = node.id === selectedNodeId;
-      const show = connectMode || pending || isPending || isHover || selected;
-      if (show) {
-        ctx.beginPath(); ctx.arc(ps.x, ps.y, isPending || isHover ? 5.5 : 4, 0, Math.PI * 2);
-        ctx.fillStyle = isPending ? "#2563eb" : isHover ? "#16a34a" : "#ffffff";
-        ctx.strokeStyle = isPending ? "#1d4ed8" : isHover ? "#15803d" : colors.stroke;
-        ctx.lineWidth = 1.5; ctx.fill(); ctx.stroke();
+      const centerS = camera.worldToScreen(node.position.x, node.position.y);
+      const showCenter = connectMode || pending || selected || hoverPort?.nodeId === node.id;
+      if (showCenter) {
+        ctx.beginPath(); ctx.arc(centerS.x, centerS.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = pending?.nodeId === node.id ? "#2563eb" : "#ffffff";
+        ctx.strokeStyle = colors.stroke; ctx.lineWidth = 1.5; ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(centerS.x - 3, centerS.y); ctx.lineTo(centerS.x + 3, centerS.y); ctx.moveTo(centerS.x, centerS.y - 3); ctx.lineTo(centerS.x, centerS.y + 3);
+        ctx.strokeStyle = pending?.nodeId === node.id ? "#fff" : colors.stroke; ctx.stroke();
+      }
+      for (const p of node.ports) {
+        const pw = portWorldPosition(node, p.id); if (!pw) continue;
+        const ps = camera.worldToScreen(pw.x, pw.y);
+        const isPending = pending?.nodeId === node.id && pending.portId === p.id;
+        const isHover = hoverPort?.nodeId === node.id && hoverPort.portId === p.id;
+        const show = connectMode || pending || isPending || isHover || selected;
+        if (show) {
+          ctx.beginPath(); ctx.arc(ps.x, ps.y, isPending || isHover ? 5.5 : 4, 0, Math.PI * 2);
+          ctx.fillStyle = isPending ? "#2563eb" : isHover ? "#16a34a" : "#ffffff";
+          ctx.strokeStyle = isPending ? "#1d4ed8" : isHover ? "#15803d" : colors.stroke;
+          ctx.lineWidth = 1.5; ctx.fill(); ctx.stroke();
+        }
       }
     }
   }

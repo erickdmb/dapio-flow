@@ -11,10 +11,16 @@ export type OitKind =
 
 export type BpmnElementType =
   | "TASK"
+  | "USER_TASK"
+  | "SERVICE_TASK"
   | "START_EVENT"
+  | "INTERMEDIATE_EVENT"
   | "END_EVENT"
   | "EXCLUSIVE_GATEWAY"
   | "PARALLEL_GATEWAY"
+  | "INCLUSIVE_GATEWAY"
+  | "TEXT_ANNOTATION"
+  | "DATA_OBJECT"
   | "POOL"
   | "LANE";
 

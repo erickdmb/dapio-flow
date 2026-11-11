@@ -156,10 +156,16 @@ const paletteDefs: PaletteItem[] = [
   { id:"al", label:"Almacenamiento", family:"OIT", oit:"STORAGE", notations:["DAP"] },
   { id:"co", label:"Combinada", family:"OIT", oit:"COMBINED", notations:["DAP"] },
   { id:"task", label:"Tarea", family:"BPMN", bpmn:"TASK", notations:["BPMN"] },
+  { id:"utask", label:"Tarea usuario", family:"BPMN", bpmn:"USER_TASK", notations:["BPMN"] },
+  { id:"stask", label:"Tarea servicio", family:"BPMN", bpmn:"SERVICE_TASK", notations:["BPMN"] },
   { id:"start", label:"Inicio", family:"BPMN", bpmn:"START_EVENT", notations:["BPMN"] },
+  { id:"ievent", label:"Evento intermedio", family:"BPMN", bpmn:"INTERMEDIATE_EVENT", notations:["BPMN"] },
   { id:"end", label:"Fin", family:"BPMN", bpmn:"END_EVENT", notations:["BPMN"] },
   { id:"xgw", label:"Compuerta XOR", family:"BPMN", bpmn:"EXCLUSIVE_GATEWAY", notations:["BPMN"] },
   { id:"pgw", label:"Compuerta AND", family:"BPMN", bpmn:"PARALLEL_GATEWAY", notations:["BPMN"] },
+  { id:"ogw", label:"Compuerta OR", family:"BPMN", bpmn:"INCLUSIVE_GATEWAY", notations:["BPMN"] },
+  { id:"note", label:"Anotación", family:"BPMN", bpmn:"TEXT_ANNOTATION", notations:["BPMN"] },
+  { id:"data", label:"Objeto de datos", family:"BPMN", bpmn:"DATA_OBJECT", notations:["BPMN"] },
   { id:"pool", label:"Pool", family:"BPMN", bpmn:"POOL", notations:["BPMN"] },
   { id:"lane", label:"Carril", family:"BPMN", bpmn:"LANE", notations:["BPMN"] },
 ];
@@ -193,9 +199,17 @@ function drawPaletteIcon(ic: CanvasRenderingContext2D, item: PaletteItem) {
     switch(item.oit){case "OPERATION": ic.beginPath(); ic.arc(0,0,w/2,0,Math.PI*2); ic.fill(); ic.stroke(); break; case "INSPECTION": ic.beginPath(); ic.rect(-w/2,-h/2,w,h); ic.fill(); ic.stroke(); break; case "DELAY": ic.beginPath(); ic.moveTo(-w/2,-h/2); ic.lineTo(-w/2,h/2); ic.arc(-w/2,0,h/2,Math.PI/2,-Math.PI/2,true); ic.closePath(); ic.fill(); ic.stroke(); break; case "STORAGE": ic.beginPath(); ic.moveTo(0,h/2); ic.lineTo(-w/2,-h/2); ic.lineTo(w/2,-h/2); ic.closePath(); ic.fill(); ic.stroke(); break; case "COMBINED": ic.beginPath(); ic.rect(-w/2,-h/2,w,h); ic.fill(); ic.stroke(); ic.beginPath(); ic.arc(0,0,w/2-2,0,Math.PI*2); ic.stroke(); break; case "TRANSPORT": ic.beginPath(); ic.moveTo(-w/2,-h/2); ic.lineTo(w/2-10,-h/2); ic.lineTo(w/2,0); ic.lineTo(w/2-10,h/2); ic.lineTo(-w/2,h/2); ic.closePath(); ic.fill(); ic.stroke(); break;}
   } else if (item.bpmn) {
     const sz = bpmnNodeSize(item.bpmn);
-    const w = item.bpmn === "POOL" || item.bpmn === "LANE" ? 40 : sz.w;
-    const h = item.bpmn === "POOL" || item.bpmn === "LANE" ? 26 : sz.h;
-    switch(item.bpmn){case "TASK": {const r=8; ic.beginPath(); ic.moveTo(-w/2+r,-h/2); ic.lineTo(w/2-r,-h/2); ic.quadraticCurveTo(w/2,-h/2,w/2,-h/2+r); ic.lineTo(w/2,h/2-r); ic.quadraticCurveTo(w/2,h/2,w/2-r,h/2); ic.lineTo(-w/2+r,h/2); ic.quadraticCurveTo(-w/2,h/2,-w/2,h/2-r); ic.lineTo(-w/2,-h/2+r); ic.quadraticCurveTo(-w/2,-h/2,-w/2+r,-h/2); ic.closePath(); ic.fill(); ic.stroke(); break;} case "START_EVENT": ic.beginPath(); ic.arc(0,0,sz.w/2,0,Math.PI*2); ic.fill(); ic.stroke(); break; case "END_EVENT": ic.beginPath(); ic.arc(0,0,sz.w/2,0,Math.PI*2); ic.fill(); ic.stroke(); ic.beginPath(); ic.arc(0,0,sz.w/2-4,0,Math.PI*2); ic.stroke(); break; case "EXCLUSIVE_GATEWAY": case "PARALLEL_GATEWAY": ic.beginPath(); ic.moveTo(0,-sz.h/2); ic.lineTo(sz.w/2,0); ic.lineTo(0,sz.h/2); ic.lineTo(-sz.w/2,0); ic.closePath(); ic.fill(); ic.stroke(); ic.lineWidth=2; if(item.bpmn==="EXCLUSIVE_GATEWAY"){ic.beginPath();ic.moveTo(-6,-6);ic.lineTo(6,6);ic.moveTo(6,-6);ic.lineTo(-6,6);ic.stroke();} else {ic.beginPath();ic.moveTo(0,-8);ic.lineTo(0,8);ic.moveTo(-8,0);ic.lineTo(8,0);ic.stroke();} break; case "POOL": case "LANE": ic.beginPath(); ic.rect(-w/2,-h/2,w,h); ic.fill(); ic.stroke(); ic.beginPath(); ic.rect(-w/2,-h/2,8,h); ic.fillStyle=color+"55"; ic.fill(); ic.stroke(); break; }
+    const w = (item.bpmn === "POOL" || item.bpmn === "LANE") ? 40 : (item.bpmn === "TEXT_ANNOTATION" ? 38 : sz.w);
+    const h = (item.bpmn === "POOL" || item.bpmn === "LANE") ? 26 : (item.bpmn === "TEXT_ANNOTATION" ? 24 : sz.h);
+    switch(item.bpmn){
+      case "TASK": case "USER_TASK": case "SERVICE_TASK": {const r=8; ic.beginPath(); ic.moveTo(-w/2+r,-h/2); ic.lineTo(w/2-r,-h/2); ic.quadraticCurveTo(w/2,-h/2,w/2,-h/2+r); ic.lineTo(w/2,h/2-r); ic.quadraticCurveTo(w/2,h/2,w/2-r,h/2); ic.lineTo(-w/2+r,h/2); ic.quadraticCurveTo(-w/2,h/2,-w/2,h/2-r); ic.lineTo(-w/2,-h/2+r); ic.quadraticCurveTo(-w/2,-h/2,-w/2+r,-h/2); ic.closePath(); ic.fill(); ic.stroke(); break;}
+      case "START_EVENT": case "INTERMEDIATE_EVENT": ic.beginPath(); ic.arc(0,0,sz.w/2,0,Math.PI*2); ic.fill(); ic.stroke(); if(item.bpmn==="INTERMEDIATE_EVENT"){ic.beginPath(); ic.arc(0,0,sz.w/2-4,0,Math.PI*2); ic.stroke();} break;
+      case "END_EVENT": ic.beginPath(); ic.arc(0,0,sz.w/2,0,Math.PI*2); ic.fill(); ic.stroke(); ic.beginPath(); ic.arc(0,0,sz.w/2-4,0,Math.PI*2); ic.stroke(); break;
+      case "EXCLUSIVE_GATEWAY": case "PARALLEL_GATEWAY": case "INCLUSIVE_GATEWAY": ic.beginPath(); ic.moveTo(0,-sz.h/2); ic.lineTo(sz.w/2,0); ic.lineTo(0,sz.h/2); ic.lineTo(-sz.w/2,0); ic.closePath(); ic.fill(); ic.stroke(); ic.lineWidth=2; if(item.bpmn==="EXCLUSIVE_GATEWAY"){ic.beginPath();ic.moveTo(-6,-6);ic.lineTo(6,6);ic.moveTo(6,-6);ic.lineTo(-6,6);ic.stroke();} else if(item.bpmn==="PARALLEL_GATEWAY"){ic.beginPath();ic.moveTo(0,-8);ic.lineTo(0,8);ic.moveTo(-8,0);ic.lineTo(8,0);ic.stroke();} else {ic.beginPath(); ic.arc(0,0,6,0,Math.PI*2); ic.stroke();} break;
+      case "TEXT_ANNOTATION": ic.beginPath(); ic.moveTo(-w/2,-h/2); ic.lineTo(-w/2+10,-h/2); ic.moveTo(-w/2,-h/2); ic.lineTo(-w/2,h/2); ic.moveTo(-w/2,h/2); ic.lineTo(-w/2+10,h/2); ic.stroke(); break;
+      case "DATA_OBJECT": ic.beginPath(); ic.moveTo(-10,-14); ic.lineTo(4,-14); ic.lineTo(10,-8); ic.lineTo(10,14); ic.lineTo(-10,14); ic.closePath(); ic.fill(); ic.stroke(); break;
+      case "POOL": case "LANE": ic.beginPath(); ic.rect(-w/2,-h/2,w,h); ic.fill(); ic.stroke(); ic.beginPath(); ic.rect(-w/2,-h/2,8,h); ic.fillStyle=color+"55"; ic.fill(); ic.stroke(); break;
+    }
   }
   ic.restore();
 }
@@ -280,7 +294,18 @@ window.addEventListener("keydown", (e) => {
 });
 window.addEventListener("keyup", e=>{ if(e.code==="Space") spaceDown=false; });
 
-function findPortAtWorld(wx:number,wy:number){ for(let i=doc.diagram.nodes.length-1;i>=0;i--){ const n=doc.diagram.nodes[i]; const p=hitTestPort(n,wx,wy,11); if(p) return {nodeId:n.id,portId:p.id}; } return null; }
+function findPortAtWorld(wx:number,wy:number){
+  // include internal center handle
+  for(let i=doc.diagram.nodes.length-1;i>=0;i--){
+    const n=doc.diagram.nodes[i];
+    if (n.ports && n.ports.length) {
+      const d = Math.hypot(wx - n.position.x, wy - n.position.y);
+      if (d <= 8) { const p = nearestPort(n, wx, wy); if (p) return {nodeId:n.id, portId:p.id}; }
+    }
+    const p=hitTestPort(n,wx,wy,11); if(p) return {nodeId:n.id,portId:p.id};
+  }
+  return null;
+}
 function nearestPortAtNode(nodeId:string, wx:number, wy:number){ const n=doc.diagram.nodes.find(x=>x.id===nodeId); if(!n) return null; const p=nearestPort(n,wx,wy); return p?{nodeId, portId:p.id}:null; }
 canvas.addEventListener("wheel", e=>{ e.preventDefault(); const r=canvas.getBoundingClientRect(); camera.zoomAt(e.clientX-r.left,e.clientY-r.top,e.deltaY); requestDraw(); }, {passive:false});
 canvas.addEventListener("mousedown", e=>{

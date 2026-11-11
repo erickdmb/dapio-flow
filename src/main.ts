@@ -37,9 +37,9 @@ let last = { x: 0, y: 0 };
 const connectBtn = document.getElementById("btn-connect") as HTMLButtonElement | null;
 const paletteItemsEl = document.getElementById("palette-items");
 const paletteLegend = document.getElementById("palette-legend");
-const palPrev = document.getElementById("pal-prev") as HTMLButtonElement | null;
-const palNext = document.getElementById("pal-next") as HTMLButtonElement | null;
 const startModal = document.getElementById("start-modal");
+const analysisTbody = document.getElementById("analysis-tbody");
+const summarySheet = document.getElementById("summary-sheet");
 let paletteKey = "";
 
 const propLabel = document.getElementById("prop-label") as HTMLInputElement | null;
@@ -74,6 +74,41 @@ function syncProjectForm() {
   if (projMethod && document.activeElement !== projMethod) projMethod.value = doc.metadata.method;
   if (projAnalyst && document.activeElement !== projAnalyst) projAnalyst.value = doc.metadata.analyst || "";
 }
+function orderedNodesForTable() {
+  const byId = new Map(doc.diagram.nodes.map(n => [n.id, n]));
+  const incoming = new Map<string, number>(); const outgoing = new Map<string, string[]>();
+  for (const n of doc.diagram.nodes) { incoming.set(n.id, 0); outgoing.set(n.id, []); }
+  for (const e of doc.diagram.edges) if (byId.has(e.source.node_id) && byId.has(e.target.node_id)) { incoming.set(e.target.node_id,(incoming.get(e.target.node_id)||0)+1); outgoing.get(e.source.node_id)!.push(e.target.node_id); }
+  const result: typeof doc.diagram.nodes = []; const seen = new Set<string>();
+  const queue = doc.diagram.nodes.filter(n => (incoming.get(n.id)||0)===0).map(n=>n.id);
+  while(queue.length){ const id=queue.shift()!; if(seen.has(id)) continue; const node=byId.get(id); if(!node) continue; seen.add(id); result.push(node); for(const nxt of outgoing.get(id)||[]){ incoming.set(nxt,(incoming.get(nxt)||1)-1); if((incoming.get(nxt)||0)<=0) queue.push(nxt); } }
+  for(const n of doc.diagram.nodes) if(!seen.has(n.id)) result.push(n);
+  return result;
+}
+function typeLabel(n: any){ if(n.kind.type==="OIT") return n.kind.value; return `BPMN_${n.kind.value}`; }
+
+function renderAnalysis() {
+  const nodes = orderedNodesForTable();
+  const method = doc.metadata.method === "TO_BE" ? "Propuesto" : "Actual";
+  if (analysisTbody) {
+    analysisTbody.innerHTML = nodes.map((n,i)=>`<tr><td>${i+1}</td><td>${method}</td><td>${(n.label||"").replace(/</g,"&lt;")}</td><td>${typeLabel(n)}</td><td>${formatDuration(n.metrics.time_seconds||0)} (${n.metrics.time_seconds||0}s)</td><td>${n.metrics.distance_meters??0} m</td><td>${(n.resource||"").replace(/</g,"&lt;")}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Sin actividades</td></tr>`;
+  }
+  const s = calculateDapSummary(doc.diagram);
+  if (summarySheet) {
+    summarySheet.innerHTML = `<strong>Hoja resumen (${doc.metadata.notation})</strong><br/>
+      Método: <b>${method}</b> · Proceso: <b>${(doc.metadata.name||"").replace(/</g,"&lt;")}</b><br/><br/>
+      <table style="width:100%; font-size:12px; border-collapse:collapse;">
+        <tr><td>Operaciones</td><td><b>${s.operations}</b></td></tr>
+        <tr><td>Transportes</td><td><b>${s.transports}</b></td></tr>
+        <tr><td>Inspecciones</td><td><b>${s.inspections}</b></td></tr>
+        <tr><td>Demoras</td><td><b>${s.delays}</b></td></tr>
+        <tr><td>Almacenamientos</td><td><b>${s.storages}</b></td></tr>
+        <tr><td>Tiempo total</td><td><b>${formatDuration(s.total_time_seconds)}</b></td></tr>
+        <tr><td>Distancia total</td><td><b>${s.total_distance_meters} m</b></td></tr>
+      </table>`;
+  }
+}
+
 function syncPanel() {
   syncProjectForm();
   const node = selectedNodeId ? doc.diagram.nodes.find(n => n.id === selectedNodeId) : null;
@@ -91,6 +126,7 @@ function syncPanel() {
   if (summaryBox) summaryBox.innerHTML = `Op: <b>${s.operations}</b> · Tr: <b>${s.transports}</b> · Insp: <b>${s.inspections}</b><br/>Dem: <b>${s.delays}</b> · Alm: <b>${s.storages}</b><br/>Tiempo total: <b>${formatDuration(s.total_time_seconds)}</b> (${s.total_time_seconds}s)<br/>Distancia: <b>${s.total_distance_meters}m</b>`;
   const v = validateDiagram(doc.diagram, doc.metadata.notation);
   if (validationBox) validationBox.innerHTML = v.ok ? `<div class="validation-ok">Sin incidencias (${doc.metadata.notation})</div>` : v.issues.map(i=>`<div class="validation-err">• [${i.code}] ${i.message}</div>`).join("");
+  renderAnalysis();
 }
 function updateStatus(extra?: string) {
   const s = calculateDapSummary(doc.diagram);
@@ -156,6 +192,7 @@ function drawPaletteIcon(ic: CanvasRenderingContext2D, item: PaletteItem) {
   }
   ic.restore();
 }
+
 function renderPalette() {
   if (!paletteItemsEl) return;
   const allowedDefs = paletteDefs.filter(d => allowedForNotation(d, doc.metadata.notation));
@@ -163,19 +200,29 @@ function renderPalette() {
   if (key === paletteKey) return;
   paletteKey = key;
   paletteItemsEl.innerHTML = "";
+  const groups = new Map<string, PaletteItem[]>();
   for (const def of allowedDefs) {
-    const item = document.createElement("div"); item.className = "palette-item"; item.draggable = true;
-    item.style.borderColor = paletteColor(def);
-    const icon = document.createElement("canvas"); icon.width=48; icon.height=36; const ictx=icon.getContext("2d"); if (ictx) drawPaletteIcon(ictx, def);
-    const label = document.createElement("span"); label.textContent = def.label; item.appendChild(icon); item.appendChild(label);
-    item.addEventListener("dragstart", ev => ev.dataTransfer?.setData("application/x-palette-id", def.id));
-    item.addEventListener("dblclick", () => { const c=canvas.parentElement!; const p=camera.screenToWorld(c.clientWidth/2,c.clientHeight/2); addNodeFromPalette(def,p.x,p.y); });
-    paletteItemsEl.appendChild(item);
+    const g = def.family === "OIT" ? "Símbolos OIT / ASME" : "Elementos BPMN";
+    if (!groups.has(g)) groups.set(g, []); groups.get(g)!.push(def);
   }
-  if (paletteLegend) paletteLegend.textContent = `Notación ${doc.metadata.notation}: solo se muestran elementos compatibles (no se mezclan tipos).`;
+  let first = true;
+  for (const [gname, items] of groups) {
+    const section = document.createElement("details"); section.className = "pal-section"; if (first) section.open = true; first = false;
+    const sum = document.createElement("summary"); sum.innerHTML = `<span>${gname}</span><span>☰</span>`;
+    const grid = document.createElement("div"); grid.className = "pal-grid";
+    for (const def of items) {
+      const item = document.createElement("div"); item.className = "palette-item"; item.draggable = true;
+      item.style.borderColor = paletteColor(def);
+      const icon = document.createElement("canvas"); icon.width=48; icon.height=36; const ictx=icon.getContext("2d"); if (ictx) drawPaletteIcon(ictx, def);
+      const label = document.createElement("span"); label.textContent = def.label; item.appendChild(icon); item.appendChild(label);
+      item.addEventListener("dragstart", ev => ev.dataTransfer?.setData("application/x-palette-id", def.id));
+      item.addEventListener("dblclick", () => { const c=canvas.parentElement!; const p=camera.screenToWorld(c.clientWidth/2,c.clientHeight/2); addNodeFromPalette(def,p.x,p.y); });
+      grid.appendChild(item);
+    }
+    section.appendChild(sum); section.appendChild(grid); paletteItemsEl.appendChild(section);
+  }
+  if (paletteLegend) paletteLegend.textContent = `Notación ${doc.metadata.notation}: elementos compatibles (no mezclables). Conecta arrastrando desde los puertos del nodo.`;
 }
-palPrev?.addEventListener("click", ()=> paletteItemsEl?.scrollBy({left: -120, behavior: "smooth"}));
-palNext?.addEventListener("click", ()=> paletteItemsEl?.scrollBy({left: 120, behavior: "smooth"}));
 canvas.addEventListener("dragover", e => e.preventDefault());
 canvas.addEventListener("drop", e => { e.preventDefault(); const id=e.dataTransfer?.getData("application/x-palette-id"); const def=paletteDefs.find(d=>d.id===id); if(!def || !allowedForNotation(def, doc.metadata.notation)) { requestDraw("Elemento no permitido en esta notación"); return; } const rect=canvas.getBoundingClientRect(); const w=camera.screenToWorld(e.clientX-rect.left,e.clientY-rect.top); addNodeFromPalette(def,w.x,w.y); });
 
@@ -203,6 +250,9 @@ document.getElementById("btn-new")?.addEventListener("click",()=>showStartModal(
 document.getElementById("btn-open")?.addEventListener("click",doOpen);
 document.getElementById("btn-save")?.addEventListener("click",doSave);
 connectBtn?.addEventListener("click",()=>setConnectMode(!connectMode));
+
+// analysis export
+document.getElementById("btn-export-analysis")?.addEventListener("click", ()=>{ doExportXls(); });
 
 // menus
 function closeMenus(){ document.querySelectorAll('.menu').forEach(m=>m.classList.remove('open')); }

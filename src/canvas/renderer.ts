@@ -197,14 +197,19 @@ export function renderDiagram(
       ctx.fillText(`${val} ${ulabel}`, s.x, labelY + 13);
     }
 
+    // ports/connectors (inside/visible handles for easier connection)
     for (const p of node.ports) {
       const pw = portWorldPosition(node, p.id); if (!pw) continue;
       const ps = camera.worldToScreen(pw.x, pw.y);
       const isPending = pending?.nodeId === node.id && pending.portId === p.id;
       const isHover = hoverPort?.nodeId === node.id && hoverPort.portId === p.id;
-      if (connectMode || pending || isPending || isHover) {
-        ctx.beginPath(); ctx.arc(ps.x, ps.y, isPending || isHover ? 5 : 3.5, 0, Math.PI * 2);
-        ctx.fillStyle = isPending ? "#2563eb" : isHover ? "#16a34a" : "#94a3b8"; ctx.fill();
+      const selected = node.id === selectedNodeId;
+      const show = connectMode || pending || isPending || isHover || selected;
+      if (show) {
+        ctx.beginPath(); ctx.arc(ps.x, ps.y, isPending || isHover ? 5.5 : 4, 0, Math.PI * 2);
+        ctx.fillStyle = isPending ? "#2563eb" : isHover ? "#16a34a" : "#ffffff";
+        ctx.strokeStyle = isPending ? "#1d4ed8" : isHover ? "#15803d" : colors.stroke;
+        ctx.lineWidth = 1.5; ctx.fill(); ctx.stroke();
       }
     }
   }

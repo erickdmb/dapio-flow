@@ -63,16 +63,27 @@
       <div class="workspace-area">
         <aside class="palette" id="palette">
           <h3>Elementos</h3>
-          <div class="muted small">Carrusel de símbolos (arrastrar al lienzo)</div>
-          <div class="carousel">
-            <button class="car-btn" id="pal-prev" title="Anterior">‹</button>
-            <div id="palette-items" class="palette-items"></div>
-            <button class="car-btn" id="pal-next" title="Siguiente">›</button>
-          </div>
+          <div class="muted small">Secciones desplegables (arrastrar al lienzo)</div>
+          <div id="palette-items" class="palette-items"></div>
           <div class="palette-legend muted small" id="palette-legend"></div>
         </aside>
         <main class="workspace">
-          <canvas id="diagram-canvas"></canvas>
+          <div class="canvas-wrap"><canvas id="diagram-canvas"></canvas></div>
+          <section class="analysis" id="analysis">
+            <div class="analysis-header">
+              <strong>Análisis detallado (DAP/DOP)</strong>
+              <button id="btn-export-analysis">Exportar hoja resumen</button>
+            </div>
+            <div class="analysis-body">
+              <div class="table-wrap">
+                <table id="analysis-table">
+                  <thead><tr><th>Sec.</th><th>Método</th><th>Descripción de la actividad</th><th>Tipo de actividad</th><th>Tiempo</th><th>Distancia</th><th>Recurso</th></tr></thead>
+                  <tbody id="analysis-tbody"></tbody>
+                </table>
+              </div>
+              <div class="summary-sheet" id="summary-sheet"></div>
+            </div>
+          </section>
         </main>
         <aside class="panel" id="panel">
           <h3>Proyecto</h3>

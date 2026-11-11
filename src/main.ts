@@ -4,7 +4,9 @@ import { hitTestEdge, hitTestNode, hitTestPort, oitNodeSize, bpmnNodeSize, rende
 import { bpmnLabel, createBpmnNode, createEmptyDocument, createOitNode } from "./model/defaults";
 import { calculateDapSummary } from "./model/summary";
 import { validateDiagram } from "./model/validation";
-import type { BpmnElementType, DiagramEdge, NotationType, OitKind, ProjectDocument } from "./model/types";
+import { formatDuration, syncTimeMetrics } from "./model/time";
+import { createDapTemplate } from "./templates/dap";
+import type { BpmnElementType, DiagramEdge, NotationType, OitKind, ProjectDocument, TimeUnit } from "./model/types";
 import { diagramToCsv, downloadCsv } from "./export/csv";
 import { documentToDapExcelXml, downloadExcel } from "./export/excel";
 import { documentToBpmnXml, downloadBpmn } from "./export/bpmn";
@@ -27,6 +29,7 @@ let pendingPort: { nodeId: string; portId: string } | null = null;
 let hoverPort: { nodeId: string; portId: string } | null = null;
 
 let spaceDown = false, panning = false, draggingNode = false, dragSnapshotTaken = false;
+let connectingDrag: { nodeId: string; portId: string } | null = null;
 let last = { x: 0, y: 0 };
 
 const connectBtn = document.getElementById("btn-connect") as HTMLButtonElement | null;
@@ -36,6 +39,7 @@ const startModal = document.getElementById("start-modal");
 const propLabel = document.getElementById("prop-label") as HTMLInputElement | null;
 const propKind = document.getElementById("prop-kind") as HTMLInputElement | null;
 const propTime = document.getElementById("prop-time") as HTMLInputElement | null;
+const propTimeUnit = document.getElementById("prop-time-unit") as HTMLSelectElement | null;
 const propDist = document.getElementById("prop-dist") as HTMLInputElement | null;
 const propResource = document.getElementById("prop-resource") as HTMLInputElement | null;
 const nodeForm = document.getElementById("node-form");
@@ -71,25 +75,31 @@ function syncPanel() {
     nodeForm.classList.remove("hidden"); noSelection.classList.add("hidden");
     if (propLabel && document.activeElement !== propLabel) propLabel.value = node.label || "";
     if (propKind) propKind.value = node.kind.type === "OIT" ? `OIT / ${node.kind.value}` : `BPMN / ${node.kind.value}`;
-    if (propTime && document.activeElement !== propTime) propTime.value = String(node.metrics.time_seconds ?? "");
+    const tv = node.metrics.time_value ?? node.metrics.time_seconds ?? "";
+    if (propTime && document.activeElement !== propTime) propTime.value = String(tv);
+    if (propTimeUnit && document.activeElement !== propTimeUnit) propTimeUnit.value = node.metrics.time_unit || "SECONDS";
     if (propDist && document.activeElement !== propDist) propDist.value = String(node.metrics.distance_meters ?? "");
     if (propResource && document.activeElement !== propResource) propResource.value = node.resource ?? "";
   } else if (nodeForm && noSelection) { nodeForm.classList.add("hidden"); noSelection.classList.remove("hidden"); }
   const s = calculateDapSummary(doc.diagram);
-  if (summaryBox) summaryBox.innerHTML = `Op: <b>${s.operations}</b> · Tr: <b>${s.transports}</b> · Insp: <b>${s.inspections}</b><br/>Dem: <b>${s.delays}</b> · Alm: <b>${s.storages}</b><br/>Tiempo total: <b>${s.total_time_seconds}s</b><br/>Distancia: <b>${s.total_distance_meters}m</b>`;
+  if (summaryBox) summaryBox.innerHTML = `Op: <b>${s.operations}</b> · Tr: <b>${s.transports}</b> · Insp: <b>${s.inspections}</b><br/>Dem: <b>${s.delays}</b> · Alm: <b>${s.storages}</b><br/>Tiempo total: <b>${formatDuration(s.total_time_seconds)}</b> (${s.total_time_seconds}s)<br/>Distancia: <b>${s.total_distance_meters}m</b>`;
   const v = validateDiagram(doc.diagram, doc.metadata.notation);
   if (validationBox) validationBox.innerHTML = v.ok ? `<div class="validation-ok">Sin incidencias (${doc.metadata.notation})</div>` : v.issues.map(i=>`<div class="validation-err">• [${i.code}] ${i.message}</div>`).join("");
 }
 function updateStatus(extra?: string) {
   const s = calculateDapSummary(doc.diagram);
   const sel = selectedNodeId ? " · Nodo" : selectedEdgeId ? " · Conector" : "";
-  const mode = connectMode ? (pendingPort ? " · Conectar: destino" : " · Conectar: origen") : "";
+  const mode = (connectMode || connectingDrag) ? " · Conectando (arrastra entre puertos)" : "";
   const msg = extra ? ` · ${extra}` : "";
-  if (statusbar) statusbar.textContent = `DAPIO-FLOW | ${doc.metadata.name} (${doc.metadata.notation}) | N:${doc.diagram.nodes.length} E:${doc.diagram.edges.length} | Tiempo total: ${s.total_time_seconds}s${sel}${mode}${msg}`;
+  if (statusbar) statusbar.textContent = `DAPIO-FLOW | ${doc.metadata.name} (${doc.metadata.notation}) | N:${doc.diagram.nodes.length} E:${doc.diagram.edges.length} | Tiempo total: ${formatDuration(s.total_time_seconds)}${sel}${mode}${msg}`;
 }
 function draw(extra?: string) {
   const p = canvas.parentElement!;
-  renderDiagram(ctx, p.clientWidth, p.clientHeight, camera, doc.diagram, selectedNodeId, selectedEdgeId, pendingPort, hoverPort, connectMode);
+  renderDiagram(ctx, p.clientWidth, p.clientHeight, camera, doc.diagram, selectedNodeId, selectedEdgeId, pendingPort || connectingDrag, hoverPort, connectMode || !!connectingDrag);
+  // draw drag-connection preview
+  if (connectingDrag && hoverPort) {
+    // preview handled by port highlights; keep simple
+  }
   syncPanel(); renderPalette(); updateStatus(extra);
 }
 
@@ -152,7 +162,15 @@ canvas.addEventListener("dragover", e => e.preventDefault());
 canvas.addEventListener("drop", e => { e.preventDefault(); const id=e.dataTransfer?.getData("application/x-palette-id"); const def=paletteDefs.find(d=>d.id===id); if(!def) return; const rect=canvas.getBoundingClientRect(); const w=camera.screenToWorld(e.clientX-rect.left,e.clientY-rect.top); addNodeFromPalette(def,w.x,w.y); });
 
 function showStartModal(show:boolean){ startModal?.classList.toggle("hidden", !show); }
-document.querySelectorAll<HTMLButtonElement>(".type-card").forEach(btn=>btn.addEventListener("click",()=>{ snapshot(); doc.metadata.notation = btn.dataset.type as NotationType; showStartModal(false); requestDraw(`Nuevo ${doc.metadata.notation}`); }));
+function newDiagram(type: NotationType | "DAP_TEMPLATE") {
+  snapshot();
+  if (type === "DAP_TEMPLATE") doc = createDapTemplate();
+  else { doc = createEmptyDocument(); doc.metadata.notation = type; }
+  selectedNodeId = null; selectedEdgeId = null; pendingPort = null; connectingDrag = null; counter = 1; undoStack.length = 0; redoStack.length = 0;
+  showStartModal(false);
+  requestDraw(type === "DAP_TEMPLATE" ? "Plantilla DAP cargada" : `Nuevo ${type}`);
+}
+document.querySelectorAll<HTMLButtonElement>(".type-card").forEach(btn=>btn.addEventListener("click",()=>{ newDiagram(btn.dataset.type as any); }));
 
 function deleteSelection(){ if(!selectedNodeId && !selectedEdgeId) return; snapshot(); if(selectedNodeId){ doc.diagram.nodes=doc.diagram.nodes.filter(n=>n.id!==selectedNodeId); doc.diagram.edges=doc.diagram.edges.filter(e=>e.source.node_id!==selectedNodeId && e.target.node_id!==selectedNodeId); selectedNodeId=null; } else if(selectedEdgeId){ doc.diagram.edges=doc.diagram.edges.filter(e=>e.id!==selectedEdgeId); selectedEdgeId=null; } requestDraw(); }
 async function doSave(){ requestDraw(await saveDocument(doc)); }
@@ -172,7 +190,7 @@ function closeMenus(){ document.querySelectorAll('.menu').forEach(m=>m.classList
 document.querySelectorAll<HTMLButtonElement>('.menu-btn').forEach(btn=>btn.addEventListener('click',(e)=>{ e.stopPropagation(); const m=btn.parentElement!; const was=m.classList.contains('open'); closeMenus(); if(!was) m.classList.add('open'); }));
 window.addEventListener('click',closeMenus);
 const bind = (id:string, fn:()=>void)=>document.getElementById(id)?.addEventListener('click',()=>{ closeMenus(); fn(); });
-bind('m-new',()=>showStartModal(true)); bind('m-open',doOpen); bind('m-save',doSave); bind('m-import-bpmn',doImportBpmn);
+bind('m-new',()=>showStartModal(true)); bind('m-template-dap',()=>newDiagram('DAP_TEMPLATE')); bind('m-open',doOpen); bind('m-save',doSave); bind('m-import-bpmn',doImportBpmn);
 bind('m-undo',undo); bind('m-redo',redo); bind('m-delete',deleteSelection);
 bind('m-center',()=>{ camera.x=60; camera.y=60; camera.scale=1; requestDraw(); }); bind('m-connect',()=>setConnectMode(!connectMode));
 bind('m-export-csv',doExportCsv); bind('m-export-xls',doExportXls); bind('m-export-bpmn',doExportBpmn);
@@ -190,7 +208,20 @@ canvas.addEventListener("mousedown", e=>{
   const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; last={x:e.clientX,y:e.clientY};
   if(e.button===1 || (e.button===0 && spaceDown)){ panning=true; canvas.style.cursor="grabbing"; return; }
   if(e.button!==0) return; const w=camera.screenToWorld(sx,sy);
-  if(connectMode){ const port=findPortAtWorld(w.x,w.y); if(port){ if(!pendingPort) pendingPort=port; else if(pendingPort.nodeId!==port.nodeId||pendingPort.portId!==port.portId){ snapshot(); const edge:DiagramEdge={id:crypto.randomUUID(),source:{node_id:pendingPort.nodeId,port_id:pendingPort.portId},target:{node_id:port.nodeId,port_id:port.portId},label:null,kind:"SEQUENCE_FLOW"}; doc.diagram.edges.push(edge); selectedEdgeId=edge.id; selectedNodeId=null; pendingPort=null; } } requestDraw(); return; }
+
+  // drag-to-connect from port (direct UX)
+  const port = findPortAtWorld(w.x,w.y);
+  if (port) {
+    if (connectMode) {
+      if(!pendingPort) pendingPort=port; else if(pendingPort.nodeId!==port.nodeId||pendingPort.portId!==port.portId){ snapshot(); const edge:DiagramEdge={id:crypto.randomUUID(),source:{node_id:pendingPort.nodeId,port_id:pendingPort.portId},target:{node_id:port.nodeId,port_id:port.portId},label:null,kind:"SEQUENCE_FLOW"}; doc.diagram.edges.push(edge); selectedEdgeId=edge.id; selectedNodeId=null; pendingPort=null; }
+      requestDraw(); return;
+    } else {
+      connectingDrag = port; pendingPort = port; selectedNodeId = null; selectedEdgeId = null; canvas.style.cursor = "crosshair"; requestDraw(); return;
+    }
+  }
+
+  if(connectMode){ pendingPort = null; requestDraw(); return; }
+
   const node=hitTestNode(doc.diagram,w.x,w.y);
   if(node){ selectedNodeId=node.id; selectedEdgeId=null; draggingNode=true; dragSnapshotTaken=false; doc.diagram.nodes=doc.diagram.nodes.filter(n=>n.id!==node.id).concat(node); }
   else { const edge=hitTestEdge(doc.diagram,w.x,w.y); if(edge){selectedEdgeId=edge.id; selectedNodeId=null;} else {selectedNodeId=null; selectedEdgeId=null;} }
@@ -200,14 +231,37 @@ window.addEventListener("mousemove", e=>{
   const r=canvas.getBoundingClientRect(); const w=camera.screenToWorld(e.clientX-r.left,e.clientY-r.top);
   const nh=findPortAtWorld(w.x,w.y); const hc=(nh?.nodeId!==hoverPort?.nodeId||nh?.portId!==hoverPort?.portId); hoverPort=nh;
   if(panning){ camera.pan(e.clientX-last.x,e.clientY-last.y); last={x:e.clientX,y:e.clientY}; requestDraw(); return; }
+  if(connectingDrag){ requestDraw(); return; }
   if(draggingNode && selectedNodeId){ const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(node){ if(!dragSnapshotTaken){snapshot(); dragSnapshotTaken=true;} node.position.x+=(e.clientX-last.x)/camera.scale; node.position.y+=(e.clientY-last.y)/camera.scale; last={x:e.clientX,y:e.clientY}; requestDraw(); } return; }
-  if(hc || connectMode) requestDraw();
+  if(hc) requestDraw();
 });
-window.addEventListener("mouseup", ()=>{ if(draggingNode && selectedNodeId){ const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(node){ node.position.x=Math.round(node.position.x/20)*20; node.position.y=Math.round(node.position.y/20)*20; } } panning=false; draggingNode=false; dragSnapshotTaken=false; canvas.style.cursor="default"; requestDraw(); });
+window.addEventListener("mouseup", e=>{
+  if(connectingDrag){
+    const r=canvas.getBoundingClientRect(); const w=camera.screenToWorld(e.clientX-r.left,e.clientY-r.top);
+    const target=findPortAtWorld(w.x,w.y);
+    if(target && (target.nodeId!==connectingDrag.nodeId || target.portId!==connectingDrag.portId)){
+      snapshot();
+      const edge:DiagramEdge={id:crypto.randomUUID(),source:{node_id:connectingDrag.nodeId,port_id:connectingDrag.portId},target:{node_id:target.nodeId,port_id:target.portId},label:null,kind:"SEQUENCE_FLOW"};
+      doc.diagram.edges.push(edge); selectedEdgeId=edge.id; selectedNodeId=null;
+    }
+    connectingDrag=null; if(!connectMode) pendingPort=null;
+  }
+  if(draggingNode && selectedNodeId){ const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(node){ node.position.x=Math.round(node.position.x/20)*20; node.position.y=Math.round(node.position.y/20)*20; } }
+  panning=false; draggingNode=false; dragSnapshotTaken=false; canvas.style.cursor="default"; requestDraw();
+});
 
 function bindPropInputs(){
-  let propTimer:any=null; const onChange=()=>{ if(!selectedNodeId) return; const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(!node) return; if(!propTimer) snapshot(); clearTimeout(propTimer); propTimer=setTimeout(()=>{propTimer=null;},500); if(propLabel) node.label=propLabel.value; if(propResource) node.resource=propResource.value||null; if(propTime) node.metrics.time_seconds = propTime.value===""?null:Number(propTime.value); if(propDist) node.metrics.distance_meters = propDist.value===""?null:Number(propDist.value); requestDraw(); };
-  [propLabel,propResource,propTime,propDist].forEach(el=>{ el?.addEventListener("input",onChange); el?.addEventListener("change",()=>{propTimer=null;}); });
+  let propTimer:any=null; const onChange=()=>{ if(!selectedNodeId) return; const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(!node) return; if(!propTimer) snapshot(); clearTimeout(propTimer); propTimer=setTimeout(()=>{propTimer=null;},500);
+    if(propLabel) node.label=propLabel.value; if(propResource) node.resource=propResource.value||null;
+    if(propTime || propTimeUnit){
+      node.metrics.time_value = propTime && propTime.value!=="" ? Number(propTime.value) : null;
+      node.metrics.time_unit = (propTimeUnit?.value as TimeUnit) || "SECONDS";
+      node.metrics = syncTimeMetrics(node.metrics);
+    }
+    if(propDist) node.metrics.distance_meters = propDist.value===""?null:Number(propDist.value);
+    requestDraw();
+  };
+  [propLabel,propResource,propTime,propDist,propTimeUnit].forEach(el=>{ el?.addEventListener("input",onChange as any); el?.addEventListener("change",()=>{propTimer=null; onChange();}); });
   const onProj=()=>{ snapshot(); if(projName) doc.metadata.name=projName.value||"Nuevo proceso"; if(projNotation) doc.metadata.notation=projNotation.value as any; if(projMethod) doc.metadata.method=projMethod.value as any; if(projAnalyst) doc.metadata.analyst=projAnalyst.value||null; requestDraw(); };
   [projName,projAnalyst].forEach(el=>el?.addEventListener("change",onProj)); [projNotation,projMethod].forEach(el=>el?.addEventListener("change",onProj));
 }

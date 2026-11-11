@@ -20,6 +20,7 @@
             <button class="menu-btn" data-menu="m-archivo">Archivo</button>
             <div class="menu-dd" id="m-archivo">
               <button id="m-new">Nuevo</button>
+              <button id="m-template-dap">Nueva plantilla DAP</button>
               <button id="m-open">Abrir proyecto</button>
               <button id="m-save">Guardar</button>
               <button id="m-import-bpmn">Importar BPMN</button>
@@ -92,7 +93,16 @@
           <div id="node-form" class="hidden">
             <label>Etiqueta <input id="prop-label" type="text" /></label>
             <label>Tipo <input id="prop-kind" type="text" disabled /></label>
-            <label>Tiempo (s) <input id="prop-time" type="number" min="0" step="1" /></label>
+            <label>Tiempo
+              <div style="display:flex; gap:6px;">
+                <input id="prop-time" type="number" min="0" step="0.1" />
+                <select id="prop-time-unit" style="max-width:110px;">
+                  <option value="SECONDS">Segundos</option>
+                  <option value="MINUTES">Minutos</option>
+                  <option value="HOURS">Horas</option>
+                </select>
+              </div>
+            </label>
             <label>Distancia (m) <input id="prop-dist" type="number" min="0" step="0.1" /></label>
             <label>Recurso <input id="prop-resource" type="text" /></label>
           </div>
@@ -113,6 +123,7 @@
           <button class="type-card" data-type="DAP"><strong>DAP</strong><span>Diagrama Analítico del Proceso (tiempos y distancias por actividad)</span></button>
           <button class="type-card" data-type="DOP"><strong>DOP</strong><span>Diagrama de Operaciones del Proceso (operación/inspección y tiempos)</span></button>
           <button class="type-card" data-type="BPMN"><strong>BPMN</strong><span>Flujo BPMN 2.0 (tareas, eventos, compuertas)</span></button>
+          <button class="type-card" data-type="DAP_TEMPLATE"><strong>Plantilla DAP</strong><span>Ficha analítica DAP con actividades y tiempos de ejemplo</span></button>
         </div>
       </div>
     </div>

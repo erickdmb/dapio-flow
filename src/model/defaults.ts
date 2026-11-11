@@ -54,20 +54,21 @@ export function createOitNode(kind: OitKind, x: number, y: number, index: number
     label: `${oitLabel(kind)} ${index}`,
     position: { x, y },
     size: null,
-    metrics: { time_seconds: baseTime, distance_meters: baseDist, cost: 0 },
+    metrics: { time_seconds: baseTime, time_value: baseTime, time_unit: "SECONDS", distance_meters: baseDist, cost: 0 },
     resource: null,
     ports: defaultPorts(),
   };
 }
 
 export function createBpmnNode(kind: BpmnElementType, x: number, y: number, index: number): DiagramNode {
+  const t = kind === "TASK" ? 20 : null;
   return {
     id: crypto.randomUUID(),
     kind: { type: "BPMN", value: kind },
     label: `${bpmnLabel(kind)} ${index}`,
     position: { x, y },
     size: null,
-    metrics: { time_seconds: kind === "TASK" ? 20 : null, distance_meters: null, cost: null },
+    metrics: { time_seconds: t, time_value: t, time_unit: "SECONDS", distance_meters: null, cost: null },
     resource: null,
     ports: defaultPorts(),
   };

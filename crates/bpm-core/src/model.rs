@@ -78,9 +78,19 @@ pub struct Size {
     pub height: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TimeUnit {
+    Seconds,
+    Minutes,
+    Hours,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Metrics {
     pub time_seconds: Option<f64>,
+    pub time_value: Option<f64>,
+    pub time_unit: Option<TimeUnit>,
     pub distance_meters: Option<f64>,
     pub cost: Option<f64>,
 }

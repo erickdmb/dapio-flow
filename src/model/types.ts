@@ -23,8 +23,12 @@ export type NodeKind =
 export interface Position { x: number; y: number }
 export interface Size { width: number; height: number }
 
+export type TimeUnit = "SECONDS" | "MINUTES" | "HOURS";
+
 export interface Metrics {
-  time_seconds?: number | null;
+  time_seconds?: number | null; // canonical
+  time_value?: number | null;
+  time_unit?: TimeUnit | null;
   distance_meters?: number | null;
   cost?: number | null;
 }

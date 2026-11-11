@@ -173,7 +173,10 @@ export function renderDiagram(
     const t = node.metrics?.time_seconds;
     if (t !== null && t !== undefined) {
       ctx.fillStyle = "#2563eb"; ctx.font = `11px Inter, system-ui, sans-serif`;
-      ctx.fillText(`${t}s`, s.x, labelY + 13);
+      const unit = node.metrics?.time_unit;
+      const val = node.metrics?.time_value ?? t;
+      const ulabel = unit === "HOURS" ? "h" : unit === "MINUTES" ? "min" : "s";
+      ctx.fillText(`${val} ${ulabel}`, s.x, labelY + 13);
     }
 
     for (const p of node.ports) {

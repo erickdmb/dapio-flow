@@ -6,6 +6,7 @@ import { calculateDapSummary } from "./model/summary";
 import { validateDiagram } from "./model/validation";
 import { formatDuration, syncTimeMetrics } from "./model/time";
 import { createDapTemplate } from "./templates/dap";
+import { paletteColor } from "./model/colors";
 import type { BpmnElementType, DiagramEdge, NotationType, OitKind, ProjectDocument, TimeUnit } from "./model/types";
 import { diagramToCsv, downloadCsv } from "./export/csv";
 import { documentToDapExcelXml, downloadExcel } from "./export/excel";
@@ -30,11 +31,16 @@ let hoverPort: { nodeId: string; portId: string } | null = null;
 
 let spaceDown = false, panning = false, draggingNode = false, dragSnapshotTaken = false;
 let connectingDrag: { nodeId: string; portId: string } | null = null;
+let mouseWorld: {x:number;y:number} | null = null;
 let last = { x: 0, y: 0 };
 
 const connectBtn = document.getElementById("btn-connect") as HTMLButtonElement | null;
 const paletteItemsEl = document.getElementById("palette-items");
+const paletteLegend = document.getElementById("palette-legend");
+const palPrev = document.getElementById("pal-prev") as HTMLButtonElement | null;
+const palNext = document.getElementById("pal-next") as HTMLButtonElement | null;
 const startModal = document.getElementById("start-modal");
+let paletteKey = "";
 
 const propLabel = document.getElementById("prop-label") as HTMLInputElement | null;
 const propKind = document.getElementById("prop-kind") as HTMLInputElement | null;
@@ -95,11 +101,7 @@ function updateStatus(extra?: string) {
 }
 function draw(extra?: string) {
   const p = canvas.parentElement!;
-  renderDiagram(ctx, p.clientWidth, p.clientHeight, camera, doc.diagram, selectedNodeId, selectedEdgeId, pendingPort || connectingDrag, hoverPort, connectMode || !!connectingDrag);
-  // draw drag-connection preview
-  if (connectingDrag && hoverPort) {
-    // preview handled by port highlights; keep simple
-  }
+  renderDiagram(ctx, p.clientWidth, p.clientHeight, camera, doc.diagram, selectedNodeId, selectedEdgeId, pendingPort || connectingDrag, hoverPort, connectMode || !!connectingDrag, connectingDrag ? mouseWorld : null);
   syncPanel(); renderPalette(); updateStatus(extra);
 }
 
@@ -121,20 +123,30 @@ const paletteDefs: PaletteItem[] = [
   { id:"pgw", label:"Compuerta AND", family:"BPMN", bpmn:"PARALLEL_GATEWAY", notations:["BPMN"] },
 ];
 
+function allowedForNotation(item: PaletteItem, notation: NotationType) {
+  if (notation === "DAP") return item.family === "OIT"; // DAP completo OIT
+  if (notation === "DOP") return item.family === "OIT" && (item.oit === "OPERATION" || item.oit === "INSPECTION" || item.oit === "COMBINED");
+  if (notation === "BPMN") return item.family === "BPMN";
+  return false;
+}
+
 function addNodeFromPalette(item: PaletteItem, worldX: number, worldY: number) {
+  if (!allowedForNotation(item, doc.metadata.notation)) { requestDraw("Elemento no permitido en esta notación"); return; }
   const snap = (v:number)=>Math.round(v/20)*20;
   snapshot();
   const node = item.family === "OIT" && item.oit
     ? createOitNode(item.oit, snap(worldX), snap(worldY), next())
     : createBpmnNode(item.bpmn!, snap(worldX), snap(worldY), next());
-  // ensure time for DAP/DOP process elements
-  if ((doc.metadata.notation === "DAP" || doc.metadata.notation === "DOP") && node.metrics.time_seconds == null) node.metrics.time_seconds = 20;
+  if ((doc.metadata.notation === "DAP" || doc.metadata.notation === "DOP") && node.metrics.time_seconds == null) {
+    node.metrics.time_seconds = 20; node.metrics.time_value = 20; node.metrics.time_unit = "SECONDS";
+  }
   doc.diagram.nodes.push(node); selectedNodeId = node.id; selectedEdgeId = null;
   requestDraw();
 }
 
 function drawPaletteIcon(ic: CanvasRenderingContext2D, item: PaletteItem) {
-  ic.clearRect(0,0,48,36); ic.save(); ic.translate(24,18); ic.scale(0.7,0.7); ic.strokeStyle="#1f2937"; ic.fillStyle="#fff"; ic.lineWidth=1.5;
+  const color = paletteColor(item);
+  ic.clearRect(0,0,48,36); ic.save(); ic.translate(24,18); ic.scale(0.7,0.7); ic.strokeStyle=color; ic.fillStyle=color + "22"; ic.lineWidth=2;
   if (item.family==="OIT" && item.oit) {
     const {w,h}=oitNodeSize(item.oit);
     switch(item.oit){case "OPERATION": ic.beginPath(); ic.arc(0,0,w/2,0,Math.PI*2); ic.fill(); ic.stroke(); break; case "INSPECTION": ic.beginPath(); ic.rect(-w/2,-h/2,w,h); ic.fill(); ic.stroke(); break; case "DELAY": ic.beginPath(); ic.moveTo(-w/2,-h/2); ic.lineTo(-w/2,h/2); ic.arc(-w/2,0,h/2,Math.PI/2,-Math.PI/2,true); ic.closePath(); ic.fill(); ic.stroke(); break; case "STORAGE": ic.beginPath(); ic.moveTo(0,h/2); ic.lineTo(-w/2,-h/2); ic.lineTo(w/2,-h/2); ic.closePath(); ic.fill(); ic.stroke(); break; case "COMBINED": ic.beginPath(); ic.rect(-w/2,-h/2,w,h); ic.fill(); ic.stroke(); ic.beginPath(); ic.arc(0,0,w/2-2,0,Math.PI*2); ic.stroke(); break; case "TRANSPORT": ic.beginPath(); ic.moveTo(-w/2,-h/2); ic.lineTo(w/2-10,-h/2); ic.lineTo(w/2,0); ic.lineTo(w/2-10,h/2); ic.lineTo(-w/2,h/2); ic.closePath(); ic.fill(); ic.stroke(); break;}
@@ -145,21 +157,27 @@ function drawPaletteIcon(ic: CanvasRenderingContext2D, item: PaletteItem) {
   ic.restore();
 }
 function renderPalette() {
-  if (!paletteItemsEl) return; paletteItemsEl.innerHTML="";
-  for (const def of paletteDefs) {
-    const allowed = def.notations.includes(doc.metadata.notation);
-    const item = document.createElement("div"); item.className = "palette-item"+(allowed?"":" disabled"); item.draggable = allowed;
+  if (!paletteItemsEl) return;
+  const allowedDefs = paletteDefs.filter(d => allowedForNotation(d, doc.metadata.notation));
+  const key = doc.metadata.notation + ":" + allowedDefs.map(d=>d.id).join(",");
+  if (key === paletteKey) return;
+  paletteKey = key;
+  paletteItemsEl.innerHTML = "";
+  for (const def of allowedDefs) {
+    const item = document.createElement("div"); item.className = "palette-item"; item.draggable = true;
+    item.style.borderColor = paletteColor(def);
     const icon = document.createElement("canvas"); icon.width=48; icon.height=36; const ictx=icon.getContext("2d"); if (ictx) drawPaletteIcon(ictx, def);
     const label = document.createElement("span"); label.textContent = def.label; item.appendChild(icon); item.appendChild(label);
-    if (allowed) {
-      item.addEventListener("dragstart", ev => ev.dataTransfer?.setData("application/x-palette-id", def.id));
-      item.addEventListener("dblclick", () => { const c=canvas.parentElement!; const p=camera.screenToWorld(c.clientWidth/2,c.clientHeight/2); addNodeFromPalette(def,p.x,p.y); });
-    }
+    item.addEventListener("dragstart", ev => ev.dataTransfer?.setData("application/x-palette-id", def.id));
+    item.addEventListener("dblclick", () => { const c=canvas.parentElement!; const p=camera.screenToWorld(c.clientWidth/2,c.clientHeight/2); addNodeFromPalette(def,p.x,p.y); });
     paletteItemsEl.appendChild(item);
   }
+  if (paletteLegend) paletteLegend.textContent = `Notación ${doc.metadata.notation}: solo se muestran elementos compatibles (no se mezclan tipos).`;
 }
+palPrev?.addEventListener("click", ()=> paletteItemsEl?.scrollBy({left: -120, behavior: "smooth"}));
+palNext?.addEventListener("click", ()=> paletteItemsEl?.scrollBy({left: 120, behavior: "smooth"}));
 canvas.addEventListener("dragover", e => e.preventDefault());
-canvas.addEventListener("drop", e => { e.preventDefault(); const id=e.dataTransfer?.getData("application/x-palette-id"); const def=paletteDefs.find(d=>d.id===id); if(!def) return; const rect=canvas.getBoundingClientRect(); const w=camera.screenToWorld(e.clientX-rect.left,e.clientY-rect.top); addNodeFromPalette(def,w.x,w.y); });
+canvas.addEventListener("drop", e => { e.preventDefault(); const id=e.dataTransfer?.getData("application/x-palette-id"); const def=paletteDefs.find(d=>d.id===id); if(!def || !allowedForNotation(def, doc.metadata.notation)) { requestDraw("Elemento no permitido en esta notación"); return; } const rect=canvas.getBoundingClientRect(); const w=camera.screenToWorld(e.clientX-rect.left,e.clientY-rect.top); addNodeFromPalette(def,w.x,w.y); });
 
 function showStartModal(show:boolean){ startModal?.classList.toggle("hidden", !show); }
 function newDiagram(type: NotationType | "DAP_TEMPLATE") {
@@ -167,6 +185,7 @@ function newDiagram(type: NotationType | "DAP_TEMPLATE") {
   if (type === "DAP_TEMPLATE") doc = createDapTemplate();
   else { doc = createEmptyDocument(); doc.metadata.notation = type; }
   selectedNodeId = null; selectedEdgeId = null; pendingPort = null; connectingDrag = null; counter = 1; undoStack.length = 0; redoStack.length = 0;
+  paletteKey = "";
   showStartModal(false);
   requestDraw(type === "DAP_TEMPLATE" ? "Plantilla DAP cargada" : `Nuevo ${type}`);
 }
@@ -229,6 +248,7 @@ canvas.addEventListener("mousedown", e=>{
 });
 window.addEventListener("mousemove", e=>{
   const r=canvas.getBoundingClientRect(); const w=camera.screenToWorld(e.clientX-r.left,e.clientY-r.top);
+  mouseWorld = w;
   const nh=findPortAtWorld(w.x,w.y); const hc=(nh?.nodeId!==hoverPort?.nodeId||nh?.portId!==hoverPort?.portId); hoverPort=nh;
   if(panning){ camera.pan(e.clientX-last.x,e.clientY-last.y); last={x:e.clientX,y:e.clientY}; requestDraw(); return; }
   if(connectingDrag){ requestDraw(); return; }
@@ -244,11 +264,20 @@ window.addEventListener("mouseup", e=>{
       const edge:DiagramEdge={id:crypto.randomUUID(),source:{node_id:connectingDrag.nodeId,port_id:connectingDrag.portId},target:{node_id:target.nodeId,port_id:target.portId},label:null,kind:"SEQUENCE_FLOW"};
       doc.diagram.edges.push(edge); selectedEdgeId=edge.id; selectedNodeId=null;
     }
-    connectingDrag=null; if(!connectMode) pendingPort=null;
+    connectingDrag=null; mouseWorld=null; if(!connectMode) pendingPort=null;
   }
   if(draggingNode && selectedNodeId){ const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(node){ node.position.x=Math.round(node.position.x/20)*20; node.position.y=Math.round(node.position.y/20)*20; } }
   panning=false; draggingNode=false; dragSnapshotTaken=false; canvas.style.cursor="default"; requestDraw();
 });
+
+function isCompatibleWithNotation(notation: NotationType): boolean {
+  return doc.diagram.nodes.every(n => {
+    if (notation === "BPMN") return n.kind.type === "BPMN";
+    if (notation === "DAP") return n.kind.type === "OIT";
+    if (notation === "DOP") return n.kind.type === "OIT" && (n.kind.value === "OPERATION" || n.kind.value === "INSPECTION" || n.kind.value === "COMBINED");
+    return true;
+  });
+}
 
 function bindPropInputs(){
   let propTimer:any=null; const onChange=()=>{ if(!selectedNodeId) return; const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(!node) return; if(!propTimer) snapshot(); clearTimeout(propTimer); propTimer=setTimeout(()=>{propTimer=null;},500);
@@ -262,7 +291,22 @@ function bindPropInputs(){
     requestDraw();
   };
   [propLabel,propResource,propTime,propDist,propTimeUnit].forEach(el=>{ el?.addEventListener("input",onChange as any); el?.addEventListener("change",()=>{propTimer=null; onChange();}); });
-  const onProj=()=>{ snapshot(); if(projName) doc.metadata.name=projName.value||"Nuevo proceso"; if(projNotation) doc.metadata.notation=projNotation.value as any; if(projMethod) doc.metadata.method=projMethod.value as any; if(projAnalyst) doc.metadata.analyst=projAnalyst.value||null; requestDraw(); };
+  const onProj=()=>{ 
+    const prevNotation = doc.metadata.notation;
+    const nextNotation = (projNotation?.value as NotationType) || prevNotation;
+    if (nextNotation !== prevNotation && !isCompatibleWithNotation(nextNotation)) {
+      if (projNotation) projNotation.value = prevNotation;
+      requestDraw("No se puede mezclar: cambia a una notación compatible o crea un diagrama nuevo");
+      return;
+    }
+    snapshot();
+    if (projName) doc.metadata.name = projName.value||"Nuevo proceso";
+    if (projNotation) doc.metadata.notation = nextNotation;
+    if (projMethod) doc.metadata.method = projMethod.value as any;
+    if (projAnalyst) doc.metadata.analyst = projAnalyst.value||null;
+    paletteKey = ""; // refresh palette
+    requestDraw();
+  };
   [projName,projAnalyst].forEach(el=>el?.addEventListener("change",onProj)); [projNotation,projMethod].forEach(el=>el?.addEventListener("change",onProj));
 }
 bindPropInputs(); window.addEventListener("resize",resize); camera.x=60; camera.y=60; showStartModal(true); resize();

@@ -63,8 +63,13 @@
       <div class="workspace-area">
         <aside class="palette" id="palette">
           <h3>Elementos</h3>
-          <div class="muted small">Arrastra al lienzo</div>
-          <div id="palette-items" class="palette-items"></div>
+          <div class="muted small">Carrusel de símbolos (arrastrar al lienzo)</div>
+          <div class="carousel">
+            <button class="car-btn" id="pal-prev" title="Anterior">‹</button>
+            <div id="palette-items" class="palette-items"></div>
+            <button class="car-btn" id="pal-next" title="Siguiente">›</button>
+          </div>
+          <div class="palette-legend muted small" id="palette-legend"></div>
         </aside>
         <main class="workspace">
           <canvas id="diagram-canvas"></canvas>

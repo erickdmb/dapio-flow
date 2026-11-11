@@ -1,5 +1,6 @@
 import { Camera } from "./camera";
 import type { BpmnElementType, Diagram, DiagramEdge, DiagramNode, OitKind, Port } from "../model/types";
+import { nodeColors } from "../model/colors";
 
 export function oitNodeSize(kind: OitKind): { w: number; h: number } {
   switch (kind) {
@@ -36,11 +37,11 @@ export function portWorldPosition(node: DiagramNode, portId: string): { x: numbe
   }
 }
 
-function drawOit(ctx: CanvasRenderingContext2D, kind: OitKind, selected: boolean) {
+function drawOit(ctx: CanvasRenderingContext2D, kind: OitKind, selected: boolean, fill = "#fff", stroke = "#1f2937") {
   const { w, h } = oitNodeSize(kind);
-  ctx.fillStyle = "#fff";
-  ctx.strokeStyle = selected ? "#2563eb" : "#1f2937";
-  ctx.lineWidth = selected ? 2.5 : 1.5;
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = selected ? "#2563eb" : stroke;
+  ctx.lineWidth = selected ? 2.5 : 2;
   switch (kind) {
     case "OPERATION": ctx.beginPath(); ctx.arc(0, 0, w / 2, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); break;
     case "INSPECTION": ctx.beginPath(); ctx.rect(-w / 2, -h / 2, w, h); ctx.fill(); ctx.stroke(); break;
@@ -60,11 +61,11 @@ function drawOit(ctx: CanvasRenderingContext2D, kind: OitKind, selected: boolean
   }
 }
 
-function drawBpmn(ctx: CanvasRenderingContext2D, kind: BpmnElementType, selected: boolean) {
+function drawBpmn(ctx: CanvasRenderingContext2D, kind: BpmnElementType, selected: boolean, fill = "#fff", stroke = "#1f2937") {
   const { w, h } = bpmnNodeSize(kind);
-  ctx.fillStyle = "#fff";
-  ctx.strokeStyle = selected ? "#2563eb" : "#1f2937";
-  ctx.lineWidth = selected ? 2.5 : 1.5;
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = selected ? "#2563eb" : stroke;
+  ctx.lineWidth = selected ? 2.5 : 2;
   switch (kind) {
     case "TASK": {
       const r = 8;
@@ -84,7 +85,7 @@ function drawBpmn(ctx: CanvasRenderingContext2D, kind: BpmnElementType, selected
     case "EXCLUSIVE_GATEWAY":
     case "PARALLEL_GATEWAY":
       ctx.beginPath(); ctx.moveTo(0,-h/2); ctx.lineTo(w/2,0); ctx.lineTo(0,h/2); ctx.lineTo(-w/2,0); ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.lineWidth = 2; ctx.strokeStyle = selected ? "#2563eb" : "#374151";
+      ctx.lineWidth = 2; ctx.strokeStyle = selected ? "#2563eb" : stroke;
       if (kind === "EXCLUSIVE_GATEWAY") {
         ctx.beginPath(); ctx.moveTo(-7,-7); ctx.lineTo(7,7); ctx.moveTo(7,-7); ctx.lineTo(-7,7); ctx.stroke();
       } else {
@@ -129,7 +130,8 @@ export function renderDiagram(
   ctx: CanvasRenderingContext2D, cssW: number, cssH: number, camera: Camera,
   diagram: Diagram, selectedNodeId: string | null, selectedEdgeId: string | null,
   pending?: { nodeId: string; portId: string } | null, hoverPort?: { nodeId: string; portId: string } | null,
-  connectMode = false
+  connectMode = false,
+  mouseWorld?: { x: number; y: number } | null
 ) {
   ctx.clearRect(0, 0, cssW, cssH);
   const topLeft = camera.screenToWorld(0, 0), bottomRight = camera.screenToWorld(cssW, cssH);
@@ -159,12 +161,28 @@ export function renderDiagram(
     ctx.restore();
   }
 
+  // connection drag preview
+  if (pending && mouseWorld) {
+    const pn = nodeById.get(pending.nodeId);
+    if (pn) {
+      const a = portWorldPosition(pn, pending.portId);
+      if (a) {
+        const as = camera.worldToScreen(a.x, a.y);
+        const bs = camera.worldToScreen(mouseWorld.x, mouseWorld.y);
+        ctx.save(); ctx.strokeStyle = "#2563eb"; ctx.lineWidth = 1.5; ctx.setLineDash([6,4]);
+        ctx.beginPath(); ctx.moveTo(as.x, as.y); ctx.lineTo(bs.x, bs.y); ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
   for (const node of diagram.nodes) {
     const s = camera.worldToScreen(node.position.x, node.position.y);
     const size = getNodeSize(node);
+    const colors = nodeColors(node);
     ctx.save(); ctx.translate(s.x, s.y); ctx.scale(camera.scale, camera.scale);
-    if (node.kind.type === "OIT") drawOit(ctx, node.kind.value, node.id === selectedNodeId);
-    else drawBpmn(ctx, node.kind.value, node.id === selectedNodeId);
+    if (node.kind.type === "OIT") drawOit(ctx, node.kind.value, node.id === selectedNodeId, colors.fill, colors.stroke);
+    else drawBpmn(ctx, node.kind.value, node.id === selectedNodeId, colors.fill, colors.stroke);
     ctx.restore();
 
     ctx.fillStyle = "#111827"; ctx.font = `12px Inter, system-ui, sans-serif`; ctx.textAlign = "center";

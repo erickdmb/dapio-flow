@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import { load } from './support/load-ts.mjs';
@@ -16,10 +16,11 @@ const context = new Proxy({}, { get: (target, key) => key in target ? target[key
 window.HTMLCanvasElement.prototype.getContext = () => context;
 const canvas = document.getElementById('diagram-canvas');
 Object.defineProperties(canvas.parentElement, { clientWidth: { value: 1000 }, clientHeight: { value: 700 } });
-canvas.getBoundingClientRect = () => ({ x: 0, y: 0, left: 0, top: 0, width: 1000, height: 700 });
+canvas.getBoundingClientRect = () => ({ x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 700, width: 1000, height: 700 });
 const style = document.createElement('style'); style.textContent = await readFile('src/style.css', 'utf8'); document.head.appendChild(style);
 const errors = [];
-window.addEventListener('error', event => errors.push(event.error));
+window.addEventListener('error', event => { errors.push(event.error?.message ?? event.message); event.preventDefault(); });
+afterEach(() => assert.deepEqual(errors, []));
 await import(await load('src/main.ts'));
 function flush() { for (let i = 0; frames.length && i < 10; i++) for (const cb of frames.splice(0)) cb(0); }
 function click(id) { const element = document.getElementById(id); element.focus(); element.click(); flush(); }
@@ -95,4 +96,59 @@ test('DOP external label opens editing and commits its text', () => {
   editor.value = 'Cortar material';
   editor.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true })); flush();
   assert.equal(document.getElementById('prop-label').value, 'Cortar material');
+});
+
+function pointer(target, type, x, y, pointerId = 1) {
+  const event = new window.MouseEvent(type, { clientX: x, clientY: y, button: 0, bubbles: true, cancelable: true });
+  Object.defineProperties(event, { pointerId: { value: pointerId }, isPrimary: { value: true } });
+  target.dispatchEvent(event); flush();
+}
+function startNotation(notation) {
+  click('btn-new'); document.querySelector(`[data-type="${notation}"]`).click(); flush();
+}
+test('palette elements drag onto the canvas for BPMN, DOP and DAP without DataTransfer', () => {
+  for (const [notation, label] of [['BPMN', 'Tarea usuario'], ['DOP', 'Operación'], ['DAP', 'Transporte']]) {
+    startNotation(notation);
+    const item = document.querySelector(`[aria-label="Agregar ${label}"]`);
+    assert.equal(item.draggable, false);
+    pointer(item.querySelector('canvas'), 'pointerdown', -100, 200);
+    pointer(window, 'pointermove', 600, 300);
+    assert.ok(document.querySelector('.palette-drag-ghost'));
+    pointer(window, 'pointerup', 600, 300);
+    assert.ok(document.getElementById('statusbar').textContent.includes('N:1 E:0'));
+    assert.equal(document.querySelector('.palette-drag-ghost'), null);
+    assert.ok(!canvas.parentElement.classList.contains('palette-drop-active'));
+    click('m-undo');
+    assert.ok(document.getElementById('statusbar').textContent.includes('N:0 E:0'));
+  }
+  assert.deepEqual(errors, []);
+});
+test('dropping outside, pointer cancellation and Escape do not add elements', () => {
+  for (const cancel of ['outside', 'pointercancel', 'escape']) {
+    fresh();
+    const item = document.querySelector('[aria-label="Agregar Tarea"]');
+    pointer(item, 'pointerdown', -100, 200);
+    pointer(window, 'pointermove', 500, 300);
+    if (cancel === 'outside') pointer(window, 'pointerup', -20, 300);
+    if (cancel === 'pointercancel') pointer(window, 'pointercancel', 500, 300);
+    if (cancel === 'escape') window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    pointer(window, 'pointerup', 500, 300);
+    assert.ok(document.getElementById('statusbar').textContent.includes('N:0 E:0'));
+    assert.equal(document.querySelector('.palette-drag-ghost'), null);
+  }
+});
+test('dragging creates a movable node at the drop point after zooming', () => {
+  fresh(); click('zoom-in');
+  const item = document.querySelector('[aria-label="Agregar Tarea"]');
+  pointer(item, 'pointerdown', -100, 200);
+  pointer(window, 'pointermove', 650, 400);
+  pointer(window, 'pointerup', 650, 400);
+  canvas.dispatchEvent(new window.MouseEvent('mousedown', { clientX: 900, clientY: 600, button: 0, bubbles: true }));
+  window.dispatchEvent(new window.MouseEvent('mouseup', { clientX: 900, clientY: 600, button: 0, bubbles: true })); flush();
+  assert.ok(!document.getElementById('no-selection').classList.contains('hidden'));
+  canvas.dispatchEvent(new window.MouseEvent('mousedown', { clientX: 650, clientY: 400, button: 0, bubbles: true })); flush();
+  assert.ok(document.getElementById('no-selection').classList.contains('hidden'));
+  window.dispatchEvent(new window.MouseEvent('mousemove', { clientX: 750, clientY: 450, bubbles: true }));
+  window.dispatchEvent(new window.MouseEvent('mouseup', { clientX: 750, clientY: 450, button: 0, bubbles: true })); flush();
+  assert.ok(document.getElementById('statusbar').textContent.includes('N:1 E:0'));
 });

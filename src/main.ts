@@ -1,4 +1,5 @@
 import "./style.css";
+import { installPaletteDrag } from "./palette-drag";
 import { resizePool, setPoolOrientation } from "./model/containers";
 import { joinEdgeAt } from "./model/connections";
 import { Camera } from "./canvas/camera";
@@ -329,6 +330,7 @@ function renderPalette() {
   const key = doc.metadata.notation + ":" + allowedDefs.map(d=>d.id).join(",") + ":" + currentEdgeKind;
   if (key === paletteKey) return;
   paletteKey = key;
+  paletteDragging?.cancel();
   paletteItemsEl.innerHTML = "";
 
   // connector types inside diagram elements panel
@@ -366,7 +368,7 @@ function renderPalette() {
     const sum = document.createElement("summary"); sum.innerHTML = `<span>${gname}</span><span>☰</span>`;
     const grid = document.createElement("div"); grid.className = "pal-grid";
     for (const def of items) {
-      const item = document.createElement("div"); item.className = "palette-item"; item.draggable = true;
+      const item = document.createElement("div"); item.className = "palette-item"; item.draggable = false; item.dataset.paletteId = def.id;
       item.style.borderColor = paletteColor(def);
       item.title = `${def.label}: arrastra al lienzo o pulsa Enter para agregar`;
       item.setAttribute("role", "button"); item.tabIndex = 0;
@@ -378,9 +380,8 @@ function renderPalette() {
       const ictx = icon.getContext("2d");
       if (ictx) { ictx.setTransform(dpr, 0, 0, dpr, 0, 0); drawPaletteIcon(ictx, def); }
       const label = document.createElement("span"); label.textContent = def.label; item.appendChild(icon); item.appendChild(label);
-      item.addEventListener("dragstart", ev => ev.dataTransfer?.setData("application/x-palette-id", def.id));
       const addAtCenter = () => { const c=canvas!.parentElement!; const p=camera.screenToWorld(c.clientWidth/2,c.clientHeight/2); addNodeFromPalette(def,p.x,p.y); };
-      item.addEventListener("dblclick", addAtCenter);
+      item.addEventListener("dblclick", () => { if (!paletteDragging?.suppressClick()) addAtCenter(); });
       item.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); addAtCenter(); } });
       grid.appendChild(item);
     }
@@ -388,6 +389,13 @@ function renderPalette() {
   }
   if (paletteLegend) paletteLegend.textContent = doc.metadata.notation === "DOP" ? "Edita el número en Propiedades. Para unir líneas, suelta un conector o un punto de unión sobre otra línea." : `Notación ${doc.metadata.notation}: arrastra elementos; conecta desde puertos o manejador interno.`;
 }
+const paletteDragging = paletteItemsEl ? installPaletteDrag(paletteItemsEl, canvas, (id, clientX, clientY) => {
+  const item = paletteDefs.find(def => def.id === id);
+  if (!item) return;
+  const rect = canvas.getBoundingClientRect();
+  const point = camera.screenToWorld(clientX - rect.left, clientY - rect.top);
+  addNodeFromPalette(item, point.x, point.y);
+}) : null;
 canvas.addEventListener("dragover", e => e.preventDefault());
 canvas.addEventListener("drop", e => { e.preventDefault(); const id=e.dataTransfer?.getData("application/x-palette-id"); const def=paletteDefs.find(d=>d.id===id); if(!def || !allowedForNotation(def, doc.metadata.notation)) { requestDraw("Elemento no permitido en esta notación"); return; } const rect=canvas.getBoundingClientRect(); const w=camera.screenToWorld(e.clientX-rect.left,e.clientY-rect.top); addNodeFromPalette(def,w.x,w.y); });
 
@@ -458,7 +466,7 @@ bind('m-export-pdf',doExportPdf); bind('m-export-csv',doExportCsv); bind('m-expo
 
 window.addEventListener("keydown", (e) => {
   const target = e.target as HTMLElement;
-  if (target?.closest("input, textarea, select, [contenteditable=true]")) {
+  if (target?.closest?.("input, textarea, select, [contenteditable=true]")) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); finishLabelEdit(true); doSave(); }
     return;
   }

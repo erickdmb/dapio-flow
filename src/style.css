@@ -5,7 +5,13 @@
 html, body, #app { height: 100%; margin: 0; }
 #app { display: grid; grid-template-rows: auto 1fr auto; height: 100%; }
 .toolbar, .statusbar { padding: 8px 12px; border-bottom: 1px solid #ddd; background: #f7f7f7; }
-.statusbar { border-top: 1px solid #ddd; border-bottom: none; font-size: 12px; color: #444; }
+.toolbar { display: flex; align-items: center; gap: 16px; }
+.toolbar .left { display: flex; align-items: baseline; }
+.toolbar .tools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.toolbar button { padding: 4px 8px; font-size: 12px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer; }
+.toolbar button:hover { background: #eef4ff; border-color: #9db7e5; }
+.sep { width: 1px; height: 20px; background: #ddd; display: inline-block; margin: 0 4px; }
+.statusbar { border-top: 1px solid #ddd; border-bottom: none; font-size: 12px; color: #333; }
 .subtitle { margin-left: 8px; color: #666; font-weight: 500; }
-.workspace { position: relative; overflow: hidden; background: #fff; }
+.workspace { position: relative; overflow: hidden; background: #fff; cursor: default; }
 #diagram-canvas { width: 100%; height: 100%; display: block; }

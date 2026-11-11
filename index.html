@@ -8,8 +8,21 @@
   <body>
     <div id="app">
       <header class="toolbar">
-        <strong>BPM Rust</strong>
-        <span class="subtitle">BPMN · DOP · DAP</span>
+        <div class="left">
+          <strong>BPM Rust</strong>
+          <span class="subtitle">BPMN · DOP · DAP</span>
+        </div>
+        <div class="tools" id="tools">
+          <button data-add="OPERATION">Operación</button>
+          <button data-add="TRANSPORT">Transporte</button>
+          <button data-add="INSPECTION">Inspección</button>
+          <button data-add="DELAY">Demora</button>
+          <button data-add="STORAGE">Almacen.</button>
+          <button data-add="COMBINED">Combinada</button>
+          <span class="sep"></span>
+          <button id="btn-delete">Eliminar</button>
+          <button id="btn-reset-view">Centrar</button>
+        </div>
       </header>
       <main class="workspace">
         <canvas id="diagram-canvas"></canvas>

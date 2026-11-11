@@ -140,6 +140,11 @@ function drawArrowHead(ctx: CanvasRenderingContext2D, from: {x:number;y:number},
   ctx.lineTo(to.x - size * Math.cos(ang + Math.PI / 7), to.y - size * Math.sin(ang + Math.PI / 7));
   ctx.closePath(); ctx.fill();
 }
+function inferPortFromPoint(p: {x:number;y:number}, from: {x:number;y:number}): string {
+  const dx = p.x - from.x, dy = p.y - from.y;
+  if (Math.abs(dx) > Math.abs(dy)) return dx >= 0 ? "e" : "w";
+  return dy >= 0 ? "s" : "n";
+}
 
 export function renderDiagram(
   ctx: CanvasRenderingContext2D, cssW: number, cssH: number, camera: Camera,
@@ -187,16 +192,24 @@ export function renderDiagram(
     ctx.restore();
   }
 
-  // connection drag preview
+  // connection drag preview (orthogonal)
   if (pending && mouseWorld) {
     const pn = nodeById.get(pending.nodeId);
     if (pn) {
       const a = portWorldPosition(pn, pending.portId);
       if (a) {
-        const as = camera.worldToScreen(a.x, a.y);
-        const bs = camera.worldToScreen(mouseWorld.x, mouseWorld.y);
-        ctx.save(); ctx.strokeStyle = "#2563eb"; ctx.lineWidth = 1.5; ctx.setLineDash([6,4]);
-        ctx.beginPath(); ctx.moveTo(as.x, as.y); ctx.lineTo(bs.x, bs.y); ctx.stroke();
+        let b = mouseWorld;
+        let toPort = inferPortFromPoint(mouseWorld, a);
+        if (hoverPort && hoverPort.nodeId !== pending.nodeId) {
+          const tn = nodeById.get(hoverPort.nodeId);
+          const tp = tn ? portWorldPosition(tn, hoverPort.portId) : null;
+          if (tp) { b = tp; toPort = hoverPort.portId; }
+        }
+        const pts = orthogonalPath(a, b, pending.portId, toPort).map(p => camera.worldToScreen(p.x, p.y));
+        ctx.save(); ctx.strokeStyle = "#2563eb"; ctx.fillStyle = "#2563eb"; ctx.lineWidth = 2; ctx.setLineDash([6,4]);
+        drawRoundedPolyline(ctx, pts, 8); ctx.stroke();
+        ctx.setLineDash([]);
+        if (hoverPort && hoverPort.nodeId !== pending.nodeId && pts.length >= 2) drawArrowHead(ctx, pts[pts.length - 2], pts[pts.length - 1], 8);
         ctx.restore();
       }
     }
@@ -252,12 +265,21 @@ export function hitTestNode(diagram: Diagram, wx: number, wy: number): DiagramNo
   }
   return null;
 }
-export function hitTestPort(node: DiagramNode, wx: number, wy: number, radius = 8): Port | null {
+export function hitTestPort(node: DiagramNode, wx: number, wy: number, radius = 10): Port | null {
   for (const p of node.ports) {
     const pw = portWorldPosition(node, p.id); if (!pw) continue;
     if (Math.hypot(wx - pw.x, wy - pw.y) <= radius) return p;
   }
   return null;
+}
+export function nearestPort(node: DiagramNode, wx: number, wy: number): Port | null {
+  let best: Port | null = null; let bestD = Infinity;
+  for (const p of node.ports) {
+    const pw = portWorldPosition(node, p.id); if (!pw) continue;
+    const d = Math.hypot(wx - pw.x, wy - pw.y);
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  return best;
 }
 function distToSegment(px:number,py:number,ax:number,ay:number,bx:number,by:number) {
   const abx = bx-ax, aby = by-ay, apx = px-ax, apy = py-ay;

@@ -1,6 +1,6 @@
 import "./style.css";
 import { Camera } from "./canvas/camera";
-import { hitTestEdge, hitTestNode, hitTestPort, oitNodeSize, bpmnNodeSize, renderDiagram } from "./canvas/renderer";
+import { hitTestEdge, hitTestNode, hitTestPort, nearestPort, oitNodeSize, bpmnNodeSize, renderDiagram } from "./canvas/renderer";
 import { bpmnLabel, createBpmnNode, createEmptyDocument, createOitNode } from "./model/defaults";
 import { calculateDapSummary } from "./model/summary";
 import { validateDiagram } from "./model/validation";
@@ -275,15 +275,25 @@ window.addEventListener("keydown", (e) => {
 });
 window.addEventListener("keyup", e=>{ if(e.code==="Space") spaceDown=false; });
 
-function findPortAtWorld(wx:number,wy:number){ for(let i=doc.diagram.nodes.length-1;i>=0;i--){ const n=doc.diagram.nodes[i]; const p=hitTestPort(n,wx,wy,8); if(p) return {nodeId:n.id,portId:p.id}; } return null; }
+function findPortAtWorld(wx:number,wy:number){ for(let i=doc.diagram.nodes.length-1;i>=0;i--){ const n=doc.diagram.nodes[i]; const p=hitTestPort(n,wx,wy,11); if(p) return {nodeId:n.id,portId:p.id}; } return null; }
+function nearestPortAtNode(nodeId:string, wx:number, wy:number){ const n=doc.diagram.nodes.find(x=>x.id===nodeId); if(!n) return null; const p=nearestPort(n,wx,wy); return p?{nodeId, portId:p.id}:null; }
 canvas.addEventListener("wheel", e=>{ e.preventDefault(); const r=canvas.getBoundingClientRect(); camera.zoomAt(e.clientX-r.left,e.clientY-r.top,e.deltaY); requestDraw(); }, {passive:false});
 canvas.addEventListener("mousedown", e=>{
   const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; last={x:e.clientX,y:e.clientY};
   if(e.button===1 || (e.button===0 && spaceDown)){ panning=true; canvas.style.cursor="grabbing"; return; }
   if(e.button!==0) return; const w=camera.screenToWorld(sx,sy);
 
-  // drag-to-connect from port (direct UX)
-  const port = findPortAtWorld(w.x,w.y);
+  // drag-to-connect from port or near edge (easier)
+  let port = findPortAtWorld(w.x,w.y);
+  if (!port) {
+    const n = hitTestNode(doc.diagram,w.x,w.y);
+    if (n && !connectMode && n.ports?.length) {
+      // if click near border, start connection for easier UX
+      const dx = Math.abs(w.x - n.position.x), dy = Math.abs(w.y - n.position.y);
+      const s = (n.size?.width ? {w:n.size.width,h:n.size.height} : (n.kind.type==='OIT'?oitNodeSize(n.kind.value):bpmnNodeSize(n.kind.value as any)));
+      if (dx > s.w*0.25 || dy > s.h*0.25) port = nearestPortAtNode(n.id, w.x, w.y);
+    }
+  }
   if (port) {
     if (connectMode) {
       if(!pendingPort) pendingPort=port; else if(pendingPort.nodeId!==port.nodeId||pendingPort.portId!==port.portId){ snapshot(); const edge:DiagramEdge={id:crypto.randomUUID(),source:{node_id:pendingPort.nodeId,port_id:pendingPort.portId},target:{node_id:port.nodeId,port_id:port.portId},label:null,kind:"SEQUENCE_FLOW"}; doc.diagram.edges.push(edge); selectedEdgeId=edge.id; selectedNodeId=null; pendingPort=null; }
@@ -312,7 +322,11 @@ window.addEventListener("mousemove", e=>{
 window.addEventListener("mouseup", e=>{
   if(connectingDrag){
     const r=canvas.getBoundingClientRect(); const w=camera.screenToWorld(e.clientX-r.left,e.clientY-r.top);
-    const target=findPortAtWorld(w.x,w.y);
+    let target=findPortAtWorld(w.x,w.y);
+    if(!target){
+      const tn = hitTestNode(doc.diagram,w.x,w.y);
+      if(tn && tn.id !== connectingDrag.nodeId) target = nearestPortAtNode(tn.id, w.x, w.y);
+    }
     if(target && (target.nodeId!==connectingDrag.nodeId || target.portId!==connectingDrag.portId)){
       snapshot();
       const edge:DiagramEdge={id:crypto.randomUUID(),source:{node_id:connectingDrag.nodeId,port_id:connectingDrag.portId},target:{node_id:target.nodeId,port_id:target.portId},label:null,kind:"SEQUENCE_FLOW"};

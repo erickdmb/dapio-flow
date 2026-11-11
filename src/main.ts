@@ -23,6 +23,30 @@ let selectedNodeId: string | null = null;
 let selectedEdgeId: string | null = null;
 let oitCounter = 1;
 
+const undoStack: string[] = [];
+const redoStack: string[] = [];
+function snapshot() {
+  undoStack.push(JSON.stringify(doc));
+  if (undoStack.length > 100) undoStack.shift();
+  redoStack.length = 0;
+}
+function restore(json: string) {
+  doc = JSON.parse(json) as ProjectDocument;
+  selectedNodeId = null; selectedEdgeId = null; pendingPort = null;
+}
+function undo() {
+  if (!undoStack.length) { draw("Nada para deshacer"); return; }
+  redoStack.push(JSON.stringify(doc));
+  restore(undoStack.pop()!);
+  draw("Deshacer");
+}
+function redo() {
+  if (!redoStack.length) { draw("Nada para rehacer"); return; }
+  undoStack.push(JSON.stringify(doc));
+  restore(redoStack.pop()!);
+  draw("Rehacer");
+}
+
 let connectMode = false;
 let pendingPort: { nodeId: string; portId: string } | null = null;
 let hoverPort: { nodeId: string; portId: string } | null = null;
@@ -30,6 +54,8 @@ let hoverPort: { nodeId: string; portId: string } | null = null;
 let spaceDown = false;
 let panning = false;
 let draggingNode = false;
+let dragStarted = false;
+let dragSnapshotTaken = false;
 let last = { x: 0, y: 0 };
 
 const connectBtn = document.getElementById("btn-connect") as HTMLButtonElement | null;
@@ -122,6 +148,7 @@ function nextCounter() {
 }
 
 function addOit(kind: OitKind) {
+  snapshot();
   const parent = canvas.parentElement!;
   const center = camera.screenToWorld(parent.clientWidth / 2, parent.clientHeight / 2);
   const snap = (v: number) => Math.round(v / 20) * 20;
@@ -132,6 +159,8 @@ function addOit(kind: OitKind) {
 }
 
 function deleteSelection() {
+  if (!selectedNodeId && !selectedEdgeId) return;
+  snapshot();
   if (selectedNodeId) {
     doc.diagram.nodes = doc.diagram.nodes.filter((n) => n.id !== selectedNodeId);
     doc.diagram.edges = doc.diagram.edges.filter((e) => e.source.node_id !== selectedNodeId && e.target.node_id !== selectedNodeId);
@@ -151,10 +180,15 @@ document.getElementById("btn-delete")?.addEventListener("click", deleteSelection
 document.getElementById("btn-reset-view")?.addEventListener("click", () => { camera.x = 40; camera.y = 40; camera.scale = 1; draw(); });
 
 function bindPropInputs() {
+  let propTimer: any = null;
   const onChange = () => {
     if (!selectedNodeId) return;
     const node = doc.diagram.nodes.find(n => n.id === selectedNodeId);
     if (!node) return;
+    // debounce snapshot for typing
+    if (!propTimer) snapshot();
+    clearTimeout(propTimer);
+    propTimer = setTimeout(() => { propTimer = null; }, 500);
     if (propLabel) node.label = propLabel.value;
     if (propResource) node.resource = propResource.value || null;
     if (propTime) node.metrics.time_seconds = propTime.value === "" ? null : Number(propTime.value);
@@ -163,17 +197,18 @@ function bindPropInputs() {
   };
   [propLabel, propResource, propTime, propDist].forEach(el => {
     el?.addEventListener("input", onChange);
-    el?.addEventListener("change", onChange);
+    el?.addEventListener("change", () => { propTimer = null; });
   });
 
   const onProj = () => {
+    snapshot();
     if (projName) doc.metadata.name = projName.value || "Nuevo proceso";
     if (projNotation) doc.metadata.notation = projNotation.value as any;
     if (projMethod) doc.metadata.method = projMethod.value as any;
     if (projAnalyst) doc.metadata.analyst = projAnalyst.value || null;
     draw();
   };
-  [projName, projAnalyst].forEach(el => { el?.addEventListener("input", onProj); el?.addEventListener("change", onProj); });
+  [projName, projAnalyst].forEach(el => { el?.addEventListener("change", onProj); });
   [projNotation, projMethod].forEach(el => { el?.addEventListener("change", onProj); });
 }
 bindPropInputs();
@@ -185,6 +220,7 @@ document.getElementById("btn-save")?.addEventListener("click", async () => {
 document.getElementById("btn-open")?.addEventListener("click", async () => {
   const res = await openDocument();
   if (res.doc && res.doc.diagram) {
+    snapshot();
     doc = res.doc;
     selectedNodeId = null; selectedEdgeId = null; pendingPort = null; oitCounter = 1;
   }
@@ -211,6 +247,7 @@ document.getElementById("btn-export-bpmn")?.addEventListener("click", () => {
 document.getElementById("btn-import-bpmn")?.addEventListener("click", async () => {
   const res = await importBpmnFromFilePicker();
   if (res.doc && res.doc.diagram) {
+    snapshot();
     doc = res.doc;
     selectedNodeId = null; selectedEdgeId = null; pendingPort = null; oitCounter = 1;
   }
@@ -220,7 +257,10 @@ document.getElementById("btn-import-bpmn")?.addEventListener("click", async () =
 window.addEventListener("keydown", (e) => {
   if (e.code === "Space") spaceDown = true;
   if (e.key === "Escape") setConnectMode(false);
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) { e.preventDefault(); undo(); return; }
+  if (mod && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) { e.preventDefault(); redo(); return; }
+  if (mod && e.key.toLowerCase() === "s") {
     e.preventDefault();
     saveDocument(doc).then((msg) => draw(msg));
   }
@@ -260,6 +300,7 @@ canvas.addEventListener("mousedown", (e) => {
         if (!pendingPort) {
           pendingPort = port;
         } else if (pendingPort.nodeId !== port.nodeId || pendingPort.portId !== port.portId) {
+          snapshot();
           const edge: DiagramEdge = {
             id: crypto.randomUUID(),
             source: { node_id: pendingPort.nodeId, port_id: pendingPort.portId },
@@ -278,6 +319,7 @@ canvas.addEventListener("mousedown", (e) => {
     const node = hitTestNode(doc.diagram, w.x, w.y);
     if (node) {
       selectedNodeId = node.id; selectedEdgeId = null; draggingNode = true;
+      dragStarted = true; dragSnapshotTaken = false;
       doc.diagram.nodes = doc.diagram.nodes.filter((n) => n.id !== node.id).concat(node);
     } else {
       const edge = hitTestEdge(doc.diagram, w.x, w.y);
@@ -298,6 +340,7 @@ window.addEventListener("mousemove", (e) => {
   } else if (draggingNode && selectedNodeId) {
     const node = doc.diagram.nodes.find((n) => n.id === selectedNodeId);
     if (node) {
+      if (!dragSnapshotTaken) { snapshot(); dragSnapshotTaken = true; }
       node.position.x += (e.clientX - last.x) / camera.scale;
       node.position.y += (e.clientY - last.y) / camera.scale;
       last = { x: e.clientX, y: e.clientY }; draw();
@@ -312,7 +355,7 @@ window.addEventListener("mouseup", () => {
     const node = doc.diagram.nodes.find((n) => n.id === selectedNodeId);
     if (node) { node.position.x = Math.round(node.position.x / 20) * 20; node.position.y = Math.round(node.position.y / 20) * 20; }
   }
-  panning = false; draggingNode = false; canvas.style.cursor = "default"; draw();
+  panning = false; draggingNode = false; dragStarted = false; dragSnapshotTaken = false; canvas.style.cursor = "default"; draw();
 });
 
 window.addEventListener("resize", resize);

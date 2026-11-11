@@ -43,5 +43,6 @@ bpm-rust/
 
 ## 5. Estado actual
 - **Versión:** `0.1.0-alpha.1` (alfa).
-- Especificaciones actualizadas, modelo de datos v0.1 y editor web/Tauri en evolución (`docs/MODEL.md`, `crates/bpm-core`, `src/`, `src-tauri/`).
-- Incluye lienzo con elementos DOP/DAP/BPMN, conexiones, tiempos, validación, análisis detallado y exportaciones. La compilación de escritorio requiere toolchain de Rust y dependencias de Tauri.
+- **Modalidades:** (1) aplicación **web** (Vite/frontend) para uso en navegador y (2) aplicación de **escritorio** con Tauri (`src-tauri/`) que integra el mismo frontend y backend Rust.
+- Especificaciones actualizadas, modelo de datos v0.1 y editor en evolución (`docs/MODEL.md`, `crates/bpm-core`, `src/`, `src-tauri/`).
+- Incluye lienzo con elementos DOP/DAP/BPMN (sin mezclar notaciones en un mismo diagrama), conexiones, tiempos, validación, análisis detallado y exportaciones. La compilación de escritorio requiere toolchain de Rust y dependencias de Tauri.

@@ -89,11 +89,12 @@
           <div id="project-form">
             <label>Nombre <input id="proj-name" type="text" /></label>
             <label>Notación
-              <select id="proj-notation">
+              <select id="proj-notation" disabled title="La notación se define al crear el diagrama y no se puede mezclar">
                 <option value="DAP">DAP</option>
                 <option value="DOP">DOP</option>
                 <option value="BPMN">BPMN</option>
               </select>
+              <small class="muted">No se puede cambiar (usa “Nuevo” para otro tipo)</small>
             </label>
             <label>Método
               <select id="proj-method">

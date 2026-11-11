@@ -412,19 +412,12 @@ function bindPropInputs(){
   };
   [propLabel,propResource,propTime,propDist,propTimeUnit].forEach(el=>{ el?.addEventListener("input",onChange as any); el?.addEventListener("change",()=>{propTimer=null; onChange();}); });
   const onProj=()=>{ 
-    const prevNotation = doc.metadata.notation;
-    const nextNotation = (projNotation?.value as NotationType) || prevNotation;
-    if (nextNotation !== prevNotation && !isCompatibleWithNotation(nextNotation)) {
-      if (projNotation) projNotation.value = prevNotation;
-      requestDraw("No se puede mezclar: cambia a una notación compatible o crea un diagrama nuevo");
-      return;
-    }
     snapshot();
     if (projName) doc.metadata.name = projName.value||"Nuevo proceso";
-    if (projNotation) doc.metadata.notation = nextNotation;
+    // notation locked to prevent mixing diagram types
+    if (projNotation) projNotation.value = doc.metadata.notation;
     if (projMethod) doc.metadata.method = projMethod.value as any;
     if (projAnalyst) doc.metadata.analyst = projAnalyst.value||null;
-    paletteKey = ""; // refresh palette
     requestDraw();
   };
   [projName,projAnalyst].forEach(el=>el?.addEventListener("change",onProj)); [projNotation,projMethod].forEach(el=>el?.addEventListener("change",onProj));

@@ -69,6 +69,7 @@ button.active { background: var(--primary); color: #fff; border-color: #1d4ed8; 
 
 .panel label { display: block; margin-bottom: 6px; font-size: 12px; }
 .panel input, .panel select { width: 100%; box-sizing: border-box; padding: 6px 8px; margin-top: 2px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.panel select:disabled { background: #f3f4f6; color: #6b7280; }
 .muted { color: var(--muted); font-size: 12px; }
 .hidden { display: none; }
 .summary-box, .validation-box { font-size: 12px; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 8px; }

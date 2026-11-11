@@ -7,6 +7,7 @@ import { validateDiagram } from "./model/validation";
 import type { DiagramEdge, OitKind, ProjectDocument } from "./model/types";
 import { diagramToCsv, downloadCsv } from "./export/csv";
 import { documentToDapExcelXml, downloadExcel } from "./export/excel";
+import { documentToBpmnXml, downloadBpmn } from "./export/bpmn";
 import { openDocument, saveDocument } from "./persistence";
 
 const canvas = document.getElementById("diagram-canvas") as HTMLCanvasElement | null;
@@ -177,6 +178,12 @@ document.getElementById("btn-export-xls")?.addEventListener("click", () => {
   const name = `${(doc.metadata.name || "proceso").replace(/[^a-z0-9-_]+/gi, "_")}_ficha_dap.xls`;
   downloadExcel(name, xml);
   draw("Ficha DAP exportada (Excel)");
+});
+document.getElementById("btn-export-bpmn")?.addEventListener("click", () => {
+  const xml = documentToBpmnXml(doc);
+  const name = `${(doc.metadata.name || "proceso").replace(/[^a-z0-9-_]+/gi, "_")}.bpmn`;
+  downloadBpmn(name, xml);
+  draw("BPMN 2.0 exportado");
 });
 
 window.addEventListener("keydown", (e) => {

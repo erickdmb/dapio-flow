@@ -1,4 +1,4 @@
-import type { DiagramNode, OitKind, Port, ProjectDocument } from "./types";
+import type { BpmnElementType, DiagramNode, OitKind, Port, ProjectDocument } from "./types";
 
 export function defaultPorts(): Port[] {
   return [
@@ -17,6 +17,16 @@ export function oitLabel(kind: OitKind): string {
     case "DELAY": return "Demora";
     case "STORAGE": return "Almacenamiento";
     case "COMBINED": return "Combinada";
+  }
+}
+
+export function bpmnLabel(kind: BpmnElementType): string {
+  switch (kind) {
+    case "TASK": return "Tarea";
+    case "START_EVENT": return "Inicio";
+    case "END_EVENT": return "Fin";
+    case "EXCLUSIVE_GATEWAY": return "Compuerta exclusiva";
+    case "PARALLEL_GATEWAY": return "Compuerta paralela";
   }
 }
 
@@ -45,6 +55,19 @@ export function createOitNode(kind: OitKind, x: number, y: number, index: number
     position: { x, y },
     size: null,
     metrics: { time_seconds: baseTime, distance_meters: baseDist, cost: 0 },
+    resource: null,
+    ports: defaultPorts(),
+  };
+}
+
+export function createBpmnNode(kind: BpmnElementType, x: number, y: number, index: number): DiagramNode {
+  return {
+    id: crypto.randomUUID(),
+    kind: { type: "BPMN", value: kind },
+    label: `${bpmnLabel(kind)} ${index}`,
+    position: { x, y },
+    size: null,
+    metrics: { time_seconds: kind === "TASK" ? 20 : null, distance_meters: null, cost: null },
     resource: null,
     ports: defaultPorts(),
   };

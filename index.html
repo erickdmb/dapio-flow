@@ -10,24 +10,50 @@
       <header class="topbar">
         <div class="brand">
           <span class="logo">DF</span>
-          <div>
+          <div class="brand-text">
             <strong>DAPIO-FLOW</strong>
-            <span class="subtitle">Modelado de procesos BPMN · DOP · DAP</span>
+            <span class="subtitle">BPMN · DOP · DAP</span>
           </div>
         </div>
+        <nav class="menubar">
+          <div class="menu">
+            <button class="menu-btn" data-menu="m-archivo">Archivo</button>
+            <div class="menu-dd" id="m-archivo">
+              <button id="m-new">Nuevo</button>
+              <button id="m-open">Abrir proyecto</button>
+              <button id="m-save">Guardar</button>
+              <button id="m-import-bpmn">Importar BPMN</button>
+            </div>
+          </div>
+          <div class="menu">
+            <button class="menu-btn" data-menu="m-edicion">Edición</button>
+            <div class="menu-dd" id="m-edicion">
+              <button id="m-undo">Deshacer</button>
+              <button id="m-redo">Rehacer</button>
+              <button id="m-delete">Eliminar selección</button>
+            </div>
+          </div>
+          <div class="menu">
+            <button class="menu-btn" data-menu="m-ver">Ver</button>
+            <div class="menu-dd" id="m-ver">
+              <button id="m-center">Centrar vista</button>
+              <button id="m-connect">Modo conectar</button>
+            </div>
+          </div>
+          <div class="menu">
+            <button class="menu-btn" data-menu="m-exportar">Exportar</button>
+            <div class="menu-dd" id="m-exportar">
+              <button id="m-export-csv">CSV (actividades)</button>
+              <button id="m-export-xls">Excel Ficha DAP</button>
+              <button id="m-export-bpmn">BPMN 2.0 XML</button>
+            </div>
+          </div>
+        </nav>
         <div class="top-actions">
-          <button id="btn-new" title="Nuevo diagrama">Nuevo</button>
+          <button id="btn-new" title="Nuevo">Nuevo</button>
           <button id="btn-open">Abrir</button>
           <button id="btn-save">Guardar</button>
-          <button id="btn-import-bpmn">Importar BPMN</button>
-          <span class="sep"></span>
-          <button id="btn-export-csv">CSV</button>
-          <button id="btn-export-xls">Excel DAP</button>
-          <button id="btn-export-bpmn">BPMN 2.0</button>
-          <span class="sep"></span>
-          <button id="btn-connect" title="Modo conectar (o arrastra desde un puerto)">Conectar</button>
-          <button id="btn-delete">Eliminar</button>
-          <button id="btn-reset-view">Centrar vista</button>
+          <button id="btn-connect" title="Conectar">Conectar</button>
           <input id="file-open" type="file" accept=".json,.bpmr.json" style="display:none" />
           <input id="file-import-bpmn" type="file" accept=".bpmn,.xml" style="display:none" />
         </div>
@@ -36,14 +62,12 @@
       <div class="workspace-area">
         <aside class="palette" id="palette">
           <h3>Elementos</h3>
-          <div class="muted small">Arrastra un elemento al lienzo</div>
+          <div class="muted small">Arrastra al lienzo</div>
           <div id="palette-items" class="palette-items"></div>
         </aside>
-
         <main class="workspace">
           <canvas id="diagram-canvas"></canvas>
         </main>
-
         <aside class="panel" id="panel">
           <h3>Proyecto</h3>
           <div id="project-form">
@@ -78,7 +102,6 @@
           <div id="validation-box" class="validation-box"></div>
         </aside>
       </div>
-
       <footer class="statusbar" id="statusbar">Listo</footer>
     </div>
 
@@ -87,9 +110,9 @@
         <h2>DAPIO-FLOW</h2>
         <p>Selecciona el tipo de diagrama para comenzar</p>
         <div class="type-grid">
-          <button class="type-card" data-type="DAP"><strong>DAP</strong><span>Diagrama Analítico del Proceso (OIT completo)</span></button>
-          <button class="type-card" data-type="DOP"><strong>DOP</strong><span>Diagrama de Operaciones del Proceso (Operación/Inspección)</span></button>
-          <button class="type-card" data-type="BPMN"><strong>BPMN</strong><span>Modelado de flujo BPMN 2.0</span></button>
+          <button class="type-card" data-type="DAP"><strong>DAP</strong><span>Diagrama Analítico del Proceso (tiempos y distancias por actividad)</span></button>
+          <button class="type-card" data-type="DOP"><strong>DOP</strong><span>Diagrama de Operaciones del Proceso (operación/inspección y tiempos)</span></button>
+          <button class="type-card" data-type="BPMN"><strong>BPMN</strong><span>Flujo BPMN 2.0 (tareas, eventos, compuertas)</span></button>
         </div>
       </div>
     </div>

@@ -13,10 +13,19 @@
 html, body, #app { height: 100%; margin: 0; color: var(--text); background: var(--bg); }
 #app { display: grid; grid-template-rows: auto 1fr auto; height: 100%; }
 
-.topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border); }
-.brand { display: flex; align-items: center; gap: 10px; }
-.logo { width: 30px; height: 30px; border-radius: 8px; background: var(--primary); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
-.subtitle { margin-left: 8px; color: var(--muted); font-weight: 500; font-size: 12px; }
+.topbar { display: flex; align-items: center; gap: 12px; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--border); }
+.brand { display: flex; align-items: center; gap: 8px; }
+.brand-text { display:flex; flex-direction:column; line-height:1.1; }
+.logo { width: 28px; height: 28px; border-radius: 8px; background: var(--primary); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
+.subtitle { color: var(--muted); font-weight: 500; font-size: 11px; }
+.menubar { display:flex; gap:2px; align-items:center; flex:1; }
+.menu { position: relative; }
+.menu-btn { background: transparent; border: 1px solid transparent; padding: 6px 8px; border-radius: 6px; }
+.menu-btn:hover, .menu.open .menu-btn { background: #f1f5f9; border-color: #e2e8f0; }
+.menu-dd { display:none; position:absolute; top:100%; left:0; min-width: 200px; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,.08); padding:4px; z-index:30; }
+.menu.open .menu-dd { display:block; }
+.menu-dd button { width:100%; text-align:left; border:none; background:transparent; padding:7px 8px; border-radius:6px; }
+.menu-dd button:hover { background:#f1f5f9; }
 .top-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 button { padding: 6px 10px; font-size: 12px; border: 1px solid var(--border); background: #fff; border-radius: 8px; cursor: pointer; color: var(--text); }
 button:hover { background: #f7faff; border-color: #b9cdf5; }

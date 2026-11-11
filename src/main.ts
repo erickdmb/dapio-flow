@@ -1,6 +1,6 @@
 import "./style.css";
 import { Camera } from "./canvas/camera";
-import { hitTestEdge, hitTestNode, hitTestPort, nearestPort, oitNodeSize, bpmnNodeSize, renderDiagram } from "./canvas/renderer";
+import { hitTestEdge, hitTestNode, hitTestPort, nearestPort, oitNodeSize, bpmnNodeSize, getNodeSize, renderDiagram } from "./canvas/renderer";
 import { bpmnLabel, createBpmnNode, createEmptyDocument, createOitNode } from "./model/defaults";
 import { calculateDapSummary } from "./model/summary";
 import { validateDiagram } from "./model/validation";
@@ -70,7 +70,7 @@ function redo() { if (!redoStack.length) { requestDraw("Nada para rehacer"); ret
 let raf = 0, pendingExtra: string | undefined;
 function requestDraw(extra?: string) { if (extra !== undefined) pendingExtra = extra; if (raf) return; raf = requestAnimationFrame(() => { raf = 0; const e = pendingExtra; pendingExtra = undefined; draw(e); }); }
 
-function resize() { const p = canvas.parentElement!; const dpr = window.devicePixelRatio || 1; canvas.width = Math.floor(p.clientWidth * dpr); canvas.height = Math.floor(p.clientHeight * dpr); ctx.setTransform(dpr,0,0,dpr,0,0); requestDraw(); }
+function resize() { const c = canvas!; const p = c.parentElement!; const dpr = window.devicePixelRatio || 1; c.width = Math.floor(p.clientWidth * dpr); c.height = Math.floor(p.clientHeight * dpr); ctx.setTransform(dpr,0,0,dpr,0,0); requestDraw(); }
 
 function syncProjectForm() {
   if (projName && document.activeElement !== projName) projName.value = doc.metadata.name || "";
@@ -144,7 +144,7 @@ function updateStatus(extra?: string) {
   if (statusbar) statusbar.textContent = `DAPIO-FLOW | ${doc.metadata.name} (${doc.metadata.notation}) | N:${doc.diagram.nodes.length} E:${doc.diagram.edges.length} | Tiempo total: ${formatDuration(s.total_time_seconds)}${sel}${mode}${msg}`;
 }
 function draw(extra?: string) {
-  const p = canvas.parentElement!;
+  const p = canvas!.parentElement!;
   renderDiagram(ctx, p.clientWidth, p.clientHeight, camera, doc.diagram, selectedNodeId, selectedEdgeId, pendingPort || connectingDrag, hoverPort, connectMode || !!connectingDrag, connectingDrag ? mouseWorld : null);
   syncPanel(); renderPalette(); updateStatus(extra);
 }
@@ -324,7 +324,7 @@ function renderPalette() {
       const icon = document.createElement("canvas"); icon.width=48; icon.height=36; const ictx=icon.getContext("2d"); if (ictx) drawPaletteIcon(ictx, def);
       const label = document.createElement("span"); label.textContent = def.label; item.appendChild(icon); item.appendChild(label);
       item.addEventListener("dragstart", ev => ev.dataTransfer?.setData("application/x-palette-id", def.id));
-      item.addEventListener("dblclick", () => { const c=canvas.parentElement!; const p=camera.screenToWorld(c.clientWidth/2,c.clientHeight/2); addNodeFromPalette(def,p.x,p.y); });
+      item.addEventListener("dblclick", () => { const c=canvas!.parentElement!; const p=camera.screenToWorld(c.clientWidth/2,c.clientHeight/2); addNodeFromPalette(def,p.x,p.y); });
       grid.appendChild(item);
     }
     section.appendChild(sum); section.appendChild(grid); paletteItemsEl.appendChild(section);
@@ -384,51 +384,51 @@ function findPortAtWorld(wx:number,wy:number){
   for(let i=doc.diagram.nodes.length-1;i>=0;i--){
     const n=doc.diagram.nodes[i];
     if (n.ports && n.ports.length) {
-      const sz = (n.size?.width ? {w:n.size.width,h:n.size.height} : (n.kind.type==='OIT'?oitNodeSize(n.kind.value):bpmnNodeSize(n.kind.value as any)));
+      const sz = getNodeSize(n);
       const hx = n.position.x + Math.min(10, sz.w/4), hy = n.position.y - Math.min(10, sz.h/4);
-      if (Math.hypot(wx - hx, wy - hy) <= 6) { const p = nearestPort(n, wx, wy); if (p) return {nodeId:n.id, portId:p.id}; }
+      // internal handle: only use for drag-to-connect in explicit connect mode to avoid blocking element move
+      if (connectMode && Math.hypot(wx - hx, wy - hy) <= 7/camera.scale) { const p = nearestPort(n, wx, wy); if (p) return {nodeId:n.id, portId:p.id, isHandle:true}; }
     }
-    const p=hitTestPort(n,wx,wy,10); if(p) return {nodeId:n.id, portId:p.id};
+    // border ports: small target so node body remains draggable
+    const p=hitTestPort(n,wx,wy,7/camera.scale); if(p) return {nodeId:n.id, portId:p.id, isHandle:false};
   }
   return null;
 }
-function nearestPortAtNode(nodeId:string, wx:number, wy:number){ const n=doc.diagram.nodes.find(x=>x.id===nodeId); if(!n) return null; const p=nearestPort(n,wx,wy); return p?{nodeId, portId:p.id}:null; }
+function nearestPortAtNode(nodeId:string, wx:number, wy:number){ const n=doc.diagram.nodes.find(x=>x.id===nodeId); if(!n) return null; const p=nearestPort(n,wx,wy); return p?{nodeId, portId:p.id, isHandle:false}:null; }
 canvas.addEventListener("wheel", e=>{ e.preventDefault(); const r=canvas.getBoundingClientRect(); camera.zoomAt(e.clientX-r.left,e.clientY-r.top,e.deltaY); requestDraw(); }, {passive:false});
 canvas.addEventListener("mousedown", e=>{
   const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; last={x:e.clientX,y:e.clientY};
   if(e.button===1 || (e.button===0 && spaceDown)){ panning=true; canvas.style.cursor="grabbing"; return; }
   if(e.button!==0) return; const w=camera.screenToWorld(sx,sy);
 
-  // drag-to-connect from explicit port/internal handle (do not block element move)
-  const port = findPortAtWorld(w.x,w.y);
-  if (port) {
-    if (connectMode) {
-      if(!pendingPort) pendingPort=port; else if(pendingPort.nodeId!==port.nodeId||pendingPort.portId!==port.portId){ snapshot(); const edge:DiagramEdge={id:crypto.randomUUID(),source:{node_id:pendingPort.nodeId,port_id:pendingPort.portId},target:{node_id:port.nodeId,port_id:port.portId},label:null,kind:currentEdgeKind}; doc.diagram.edges.push(edge); selectedEdgeId=edge.id; selectedNodeId=null; pendingPort=null; }
-      requestDraw(); return;
-    } else {
-      connectingDrag = port; pendingPort = port; selectedNodeId = null; selectedEdgeId = null; canvas.style.cursor = "crosshair"; requestDraw(); return;
-    }
-  }
-
-  if(connectMode){ pendingPort = null; requestDraw(); return; }
-
-  if(connectMode){ pendingPort = null; requestDraw(); return; }
-
-  // resize handle for selected container
+  // resize handle for selected container (BPMN pool/lane)
   if (selectedNodeId) {
     const sn = doc.diagram.nodes.find(n=>n.id===selectedNodeId);
     if (sn && sn.kind.type==='BPMN' && (sn.kind.value==='POOL'||sn.kind.value==='LANE')) {
       const sz = (sn.size?.width ? {w:sn.size.width,h:sn.size.height} : (sn.kind.value==='POOL'?{w:600,h:220}:{w:560,h:120}));
       const hx = sn.position.x + sz.w/2, hy = sn.position.y + sz.h/2;
-      if (Math.abs(w.x - hx) <= 8/camera.scale && Math.abs(w.y - hy) <= 8/camera.scale) {
+      if (Math.abs(w.x - hx) <= 10/camera.scale && Math.abs(w.y - hy) <= 10/camera.scale) {
         resizingNodeId = sn.id; snapshot(); requestDraw(); return;
       }
     }
   }
 
-  const node=hitTestNode(doc.diagram,w.x,w.y);
-  if(node){ selectedNodeId=node.id; selectedEdgeId=null; draggingNode=true; dragSnapshotTaken=false; doc.diagram.nodes=doc.diagram.nodes.filter(n=>n.id!==node.id).concat(node); }
-  else { const edge=hitTestEdge(doc.diagram,w.x,w.y); if(edge){selectedEdgeId=edge.id; selectedNodeId=null;} else {selectedNodeId=null; selectedEdgeId=null;} }
+  const node = hitTestNode(doc.diagram, w.x, w.y);
+  const port = findPortAtWorld(w.x, w.y);
+
+  // Start connection only from explicit port/internal handle
+  if (port) {
+    connectingDrag = port; pendingPort = port; selectedNodeId = node ? node.id : null; selectedEdgeId = null; canvas.style.cursor = "crosshair"; requestDraw(); return;
+  }
+
+  if (node) {
+    selectedNodeId = node.id; selectedEdgeId = null; draggingNode = true; dragSnapshotTaken = false;
+    doc.diagram.nodes = doc.diagram.nodes.filter(n=>n.id!==node.id).concat(node);
+  } else {
+    const edge = hitTestEdge(doc.diagram, w.x, w.y);
+    if (edge) { selectedEdgeId = edge.id; selectedNodeId = null; }
+    else { selectedNodeId = null; selectedEdgeId = null; }
+  }
   requestDraw();
 });
 window.addEventListener("mousemove", e=>{
@@ -458,18 +458,21 @@ window.addEventListener("mouseup", e=>{
   }
   if(draggingNode && selectedNodeId){ const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(node){ node.position.x=Math.round(node.position.x/20)*20; node.position.y=Math.round(node.position.y/20)*20; } }
   if(resizingNodeId){ const node=doc.diagram.nodes.find(n=>n.id===resizingNodeId); if(node && node.size){ node.size.width=Math.round(node.size.width/20)*20; node.size.height=Math.round(node.size.height/20)*20; if(node.kind.type==='BPMN' && node.kind.value==='POOL') layoutPoolLanes(node.id); } }
-  // keep lanes inside pools and auto-layout/grow
+  // snap and keep lanes inside pools / auto-layout
   if (selectedNodeId) {
     const node = doc.diagram.nodes.find(n=>n.id===selectedNodeId);
-    if (node && doc.metadata.notation==='BPMN' && node.kind.type==='BPMN' && node.kind.value==='LANE') {
-      const pools = doc.diagram.nodes.filter(n=>n.kind.type==='BPMN' && n.kind.value==='POOL');
-      if (pools.length) {
-        const pool = pools.find(p=>{ const pw=p.size?.width??600, ph=p.size?.height??220; return Math.abs(node.position.x-p.position.x)<=pw/2 && Math.abs(node.position.y-p.position.y)<=ph/2; }) || pools[0];
-        layoutPoolLanes(pool.id);
+    if (node) {
+      if (draggingNode) { node.position.x = Math.round(node.position.x/20)*20; node.position.y = Math.round(node.position.y/20)*20; }
+      if (doc.metadata.notation==='BPMN' && node.kind.type==='BPMN' && node.kind.value==='LANE') {
+        const pools = doc.diagram.nodes.filter(n=>n.kind.type==='BPMN' && n.kind.value==='POOL');
+        if (pools.length) {
+          const pool = pools.find(p=>{ const pw=p.size?.width??600, ph=p.size?.height??220; return Math.abs(node.position.x-p.position.x)<=pw/2 && Math.abs(node.position.y-p.position.y)<=ph/2; }) || pools[0];
+          layoutPoolLanes(pool.id);
+        }
       }
-    }
-    if (node && doc.metadata.notation==='BPMN' && node.kind.type==='BPMN' && node.kind.value==='POOL') {
-      layoutPoolLanes(node.id);
+      if (doc.metadata.notation==='BPMN' && node.kind.type==='BPMN' && node.kind.value==='POOL') {
+        layoutPoolLanes(node.id);
+      }
     }
   }
   panning=false; draggingNode=false; dragSnapshotTaken=false; resizingNodeId=null; canvas.style.cursor="default"; requestDraw();

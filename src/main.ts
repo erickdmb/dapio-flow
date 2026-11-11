@@ -5,6 +5,7 @@ import { createEmptyDocument, createOitNode } from "./model/defaults";
 import { calculateDapSummary } from "./model/summary";
 import { validateDiagram } from "./model/validation";
 import type { DiagramEdge, OitKind, ProjectDocument } from "./model/types";
+import { diagramToCsv, downloadCsv } from "./export/csv";
 import { openDocument, saveDocument } from "./persistence";
 
 const canvas = document.getElementById("diagram-canvas") as HTMLCanvasElement | null;
@@ -163,6 +164,12 @@ document.getElementById("btn-open")?.addEventListener("click", async () => {
     selectedNodeId = null; selectedEdgeId = null; pendingPort = null; oitCounter = 1;
   }
   draw(res.message);
+});
+document.getElementById("btn-export-csv")?.addEventListener("click", () => {
+  const csv = diagramToCsv(doc.diagram);
+  const name = `${(doc.metadata.name || "proceso").replace(/[^a-z0-9-_]+/gi, "_")}_dap.csv`;
+  downloadCsv(name, csv);
+  draw("CSV exportado");
 });
 
 window.addEventListener("keydown", (e) => {

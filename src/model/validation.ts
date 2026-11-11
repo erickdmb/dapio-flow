@@ -50,5 +50,28 @@ export function validateDiagram(diagram: Diagram, notation: NotationType): Valid
   if ((notation === "DOP" || notation === "DAP") && hasCycle) {
     issues.push({ code: "CYCLIC_FLOW", message: "Se detectó un ciclo en el flujo DOP/DAP" });
   }
+
+  // BPMN: lanes must be inside a pool
+  if (notation === "BPMN") {
+    const pools = diagram.nodes.filter(n => n.kind.type === "BPMN" && n.kind.value === "POOL");
+    const inside = (lane: any, pool: any) => {
+      const lw = lane.size?.width ?? 560, lh = lane.size?.height ?? 120;
+      const pw = pool.size?.width ?? 600, ph = pool.size?.height ?? 220;
+      const lx1 = lane.position.x - lw/2, lx2 = lane.position.x + lw/2, ly1 = lane.position.y - lh/2, ly2 = lane.position.y + lh/2;
+      const px1 = pool.position.x - pw/2, px2 = pool.position.x + pw/2, py1 = pool.position.y - ph/2, py2 = pool.position.y + ph/2;
+      return lx1 >= px1 && lx2 <= px2 && ly1 >= py1 && ly2 <= py2;
+    };
+    for (const n of diagram.nodes) {
+      if (n.kind.type === "BPMN" && n.kind.value === "LANE") {
+        if (!pools.some(p => inside(n, p))) {
+          issues.push({ code: "LANE_OUTSIDE_POOL", message: "Todo carril (lane) debe estar dentro de un pool", node_id: n.id });
+        }
+      }
+    }
+    if (pools.length === 0 && diagram.nodes.some(n => n.kind.type === "BPMN" && n.kind.value === "LANE")) {
+      // handled per-lane above
+    }
+  }
+
   return { ok: issues.length === 0, issues };
 }

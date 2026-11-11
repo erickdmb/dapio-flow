@@ -42,6 +42,8 @@ const paletteLegend = document.getElementById("palette-legend");
 const startModal = document.getElementById("start-modal");
 const analysisTbody = document.getElementById("analysis-tbody");
 const summarySheet = document.getElementById("summary-sheet");
+const analysisEl = document.getElementById("analysis");
+const workspaceEl = document.querySelector(".workspace") as HTMLElement | null;
 let paletteKey = "";
 
 const propLabel = document.getElementById("prop-label") as HTMLInputElement | null;
@@ -90,6 +92,10 @@ function orderedNodesForTable() {
 function typeLabel(n: any){ if(n.kind.type==="OIT") return n.kind.value; return `BPMN_${n.kind.value}`; }
 
 function renderAnalysis() {
+  const show = doc.metadata.notation === "DAP" || doc.metadata.notation === "DOP";
+  analysisEl?.classList.toggle("hidden", !show);
+  workspaceEl?.classList.toggle("no-analysis", !show);
+  if (!show) return;
   const nodes = orderedNodesForTable();
   const method = doc.metadata.method === "TO_BE" ? "Propuesto" : "Actual";
   if (analysisTbody) {
@@ -180,6 +186,29 @@ function allowedForNotation(item: PaletteItem, notation: NotationType) {
 function addNodeFromPalette(item: PaletteItem, worldX: number, worldY: number) {
   if (!allowedForNotation(item, doc.metadata.notation)) { requestDraw("Elemento no permitido en esta notación"); return; }
   const snap = (v:number)=>Math.round(v/20)*20;
+  let x = snap(worldX), y = snap(worldY);
+
+  // BPMN rule: lanes must be inside a pool
+  if (doc.metadata.notation === "BPMN" && item.family === "BPMN" && item.bpmn === "LANE") {
+    const pools = doc.diagram.nodes.filter(n => n.kind.type === "BPMN" && n.kind.value === "POOL");
+    if (pools.length === 0) { requestDraw("Regla BPMN: primero agrega un Pool para colocar carriles dentro"); return; }
+    // place inside nearest pool
+    let pool = pools.find(p => { const pw=p.size?.width??600, ph=p.size?.height??220; return Math.abs(x-p.position.x)<=pw/2 && Math.abs(y-p.position.y)<=ph/2; }) || pools[0];
+    const pw = pool.size?.width ?? 600, ph = pool.size?.height ?? 220;
+    const laneW = Math.max(200, pw - 40), laneH = 120;
+    x = pool.position.x;
+    const existingLanes = doc.diagram.nodes.filter(n => n.kind.type==='BPMN' && n.kind.value==='LANE' && Math.abs(n.position.x-pool.position.x)<pw/2 && Math.abs(n.position.y-pool.position.y)<ph/2).length;
+    y = pool.position.y - ph/2 + 60 + existingLanes * 120;
+    // clamp inside
+    y = Math.max(pool.position.y - ph/2 + 60, Math.min(y, pool.position.y + ph/2 - 60));
+    snapshot();
+    const node = createBpmnNode("LANE", x, y, next());
+    node.size = { width: laneW, height: laneH };
+    doc.diagram.nodes.push(node); selectedNodeId = node.id; selectedEdgeId = null;
+    requestDraw();
+    return;
+  }
+
   snapshot();
   const node = item.family === "OIT" && item.oit
     ? createOitNode(item.oit, snap(worldX), snap(worldY), next())
@@ -387,6 +416,19 @@ window.addEventListener("mouseup", e=>{
   }
   if(draggingNode && selectedNodeId){ const node=doc.diagram.nodes.find(n=>n.id===selectedNodeId); if(node){ node.position.x=Math.round(node.position.x/20)*20; node.position.y=Math.round(node.position.y/20)*20; } }
   if(resizingNodeId){ const node=doc.diagram.nodes.find(n=>n.id===resizingNodeId); if(node && node.size){ node.size.width=Math.round(node.size.width/20)*20; node.size.height=Math.round(node.size.height/20)*20; } }
+  // keep lanes inside pools on move end
+  if (draggingNode && selectedNodeId) {
+    const node = doc.diagram.nodes.find(n=>n.id===selectedNodeId);
+    if (node && doc.metadata.notation==='BPMN' && node.kind.type==='BPMN' && node.kind.value==='LANE') {
+      const pools = doc.diagram.nodes.filter(n=>n.kind.type==='BPMN' && n.kind.value==='POOL');
+      if (pools.length) {
+        const pool = pools.find(p=>{ const pw=p.size?.width??600, ph=p.size?.height??220; return Math.abs(node.position.x-p.position.x)<=pw/2 && Math.abs(node.position.y-p.position.y)<=ph/2; }) || pools[0];
+        const pw=pool.size?.width??600, ph=pool.size?.height??220, lw=node.size?.width??560, lh=node.size?.height??120;
+        node.position.x = Math.max(pool.position.x - pw/2 + lw/2 + 2, Math.min(pool.position.x + pw/2 - lw/2 - 2, node.position.x));
+        node.position.y = Math.max(pool.position.y - ph/2 + lh/2 + 2, Math.min(pool.position.y + ph/2 - lh/2 - 2, node.position.y));
+      }
+    }
+  }
   panning=false; draggingNode=false; dragSnapshotTaken=false; resizingNodeId=null; canvas.style.cursor="default"; requestDraw();
 });
 

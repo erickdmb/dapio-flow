@@ -42,6 +42,10 @@ const nodeForm = document.getElementById("node-form");
 const noSelection = document.getElementById("no-selection");
 const summaryBox = document.getElementById("summary-box");
 const validationBox = document.getElementById("validation-box");
+const projName = document.getElementById("proj-name") as HTMLInputElement | null;
+const projNotation = document.getElementById("proj-notation") as HTMLSelectElement | null;
+const projMethod = document.getElementById("proj-method") as HTMLSelectElement | null;
+const projAnalyst = document.getElementById("proj-analyst") as HTMLInputElement | null;
 
 function resize() {
   const parent = canvas.parentElement!;
@@ -52,16 +56,24 @@ function resize() {
   draw();
 }
 
+function syncProjectForm() {
+  if (projName && document.activeElement !== projName) projName.value = doc.metadata.name || "";
+  if (projNotation && document.activeElement !== projNotation) projNotation.value = doc.metadata.notation;
+  if (projMethod && document.activeElement !== projMethod) projMethod.value = doc.metadata.method;
+  if (projAnalyst && document.activeElement !== projAnalyst) projAnalyst.value = doc.metadata.analyst || "";
+}
+
 function syncPanel() {
+  syncProjectForm();
   const node = selectedNodeId ? doc.diagram.nodes.find(n => n.id === selectedNodeId) : null;
   if (node && nodeForm && noSelection) {
     nodeForm.classList.remove("hidden");
     noSelection.classList.add("hidden");
-    if (propLabel) propLabel.value = node.label || "";
+    if (propLabel && document.activeElement !== propLabel) propLabel.value = node.label || "";
     if (propKind) propKind.value = node.kind.type === "OIT" ? node.kind.value : node.kind.value;
-    if (propTime) propTime.value = String(node.metrics.time_seconds ?? "");
-    if (propDist) propDist.value = String(node.metrics.distance_meters ?? "");
-    if (propResource) propResource.value = node.resource ?? "";
+    if (propTime && document.activeElement !== propTime) propTime.value = String(node.metrics.time_seconds ?? "");
+    if (propDist && document.activeElement !== propDist) propDist.value = String(node.metrics.distance_meters ?? "");
+    if (propResource && document.activeElement !== propResource) propResource.value = node.resource ?? "";
   } else if (nodeForm && noSelection) {
     nodeForm.classList.add("hidden");
     noSelection.classList.remove("hidden");
@@ -152,6 +164,16 @@ function bindPropInputs() {
     el?.addEventListener("input", onChange);
     el?.addEventListener("change", onChange);
   });
+
+  const onProj = () => {
+    if (projName) doc.metadata.name = projName.value || "Nuevo proceso";
+    if (projNotation) doc.metadata.notation = projNotation.value as any;
+    if (projMethod) doc.metadata.method = projMethod.value as any;
+    if (projAnalyst) doc.metadata.analyst = projAnalyst.value || null;
+    draw();
+  };
+  [projName, projAnalyst].forEach(el => { el?.addEventListener("input", onProj); el?.addEventListener("change", onProj); });
+  [projNotation, projMethod].forEach(el => { el?.addEventListener("change", onProj); });
 }
 bindPropInputs();
 

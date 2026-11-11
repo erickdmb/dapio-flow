@@ -37,6 +37,24 @@
           <canvas id="diagram-canvas"></canvas>
         </div>
         <aside class="panel" id="panel">
+          <h3>Proyecto</h3>
+          <div id="project-form">
+            <label>Nombre <input id="proj-name" type="text" /></label>
+            <label>Notación
+              <select id="proj-notation">
+                <option value="DAP">DAP</option>
+                <option value="DOP">DOP</option>
+                <option value="BPMN">BPMN</option>
+              </select>
+            </label>
+            <label>Método
+              <select id="proj-method">
+                <option value="AS_IS">Actual (AS_IS)</option>
+                <option value="TO_BE">Propuesto (TO_BE)</option>
+              </select>
+            </label>
+            <label>Analista <input id="proj-analyst" type="text" /></label>
+          </div>
           <h3>Propiedades</h3>
           <div id="no-selection" class="muted">Selecciona un nodo para editar sus propiedades.</div>
           <div id="node-form" class="hidden">
